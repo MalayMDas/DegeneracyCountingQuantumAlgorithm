@@ -1,0 +1,2410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Plot Creator</title>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.9/MathJax.js?config=TeX-AMS-MML_SVG"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #d8dce3;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --danger: #cf222e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+  }
+  .app { display: grid; grid-template-columns: 420px 10px 1fr; gap: 0 12px; padding: 12px; height: 100vh; }
+  .splitter { position: relative; cursor: col-resize; user-select: none; background: transparent; }
+  .splitter::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px;
+                      background: var(--border); border-radius: 1px; transition: background 0.1s, width 0.1s; }
+  .splitter:hover::before, .splitter.dragging::before { background: var(--accent); width: 3px; left: 3.5px; }
+  body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-y: auto; }
+  h1 { font-size: 16px; margin: 0 0 10px 0; }
+  h2 { font-size: 13px; margin: 14px 0 6px 0; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  label { display: block; font-weight: 500; margin-bottom: 4px; }
+  textarea {
+    width: 100%; min-height: 120px; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 4px; padding: 6px; resize: vertical;
+  }
+  input[type="text"], input[type="number"], select {
+    border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font-size: 12px; font-family: inherit;
+  }
+  input[type="color"] { border: 1px solid var(--border); border-radius: 4px; padding: 0; width: 32px; height: 26px; cursor: pointer; }
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 4px; padding: 6px 12px;
+    font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  button:hover { background: #0860c7; }
+  button.secondary { background: #ffffff; color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: #f3f4f6; }
+  .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .controls { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+  .controls label { margin: 0; font-size: 12px; }
+  #series-controls { overflow-x: auto; }
+  .series-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .series-table input.num-cell { width: 52px; padding: 4px 4px; }
+  .series-table th, .series-table td { text-align: left; padding: 4px 5px; font-size: 12px; border-bottom: 1px solid #eef0f3; vertical-align: middle; }
+  .series-table th { font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .series-table td input[type="text"] { width: 100%; }
+  .series-table select { width: 100%; }
+  .series-table td.drag-handle { width: 16px; text-align: center; cursor: grab; color: var(--muted);
+                                 user-select: none; font-size: 13px; line-height: 1; padding: 4px 2px; }
+  .series-table td.drag-handle:active { cursor: grabbing; }
+  .series-table tr.series-row.dragging { opacity: 0.4; }
+  .series-table tr.series-row.drop-above td { box-shadow: inset 0 2px 0 0 var(--accent); }
+  .series-table tr.series-row.drop-below td { box-shadow: inset 0 -2px 0 0 var(--accent); }
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  #plot { display: block; }                     /* size is set by JS to match Plot style options aspect ratio */
+  #plot .legend { cursor: move; }
+
+  /* Data table */
+  .data-table-scroll { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: white; }
+  .data-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .data-table th, .data-table td { border: 1px solid #eef0f3; padding: 0; vertical-align: middle; }
+  .data-table thead th { background: #f3f4f6; position: sticky; top: 0; z-index: 2; padding: 2px 2px 2px 4px; }
+  .data-table input.cell { border: none; padding: 4px 6px; width: 100%; min-width: 56px; max-width: 90px;
+                           font: 12px ui-monospace, Consolas, monospace; background: transparent; box-sizing: border-box; }
+  .data-table input.cell:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: #fff; }
+  .data-table input.bad { background: #ffe7e7; }
+  .data-table input.hdr-x, .data-table input.hdr-series { font-family: inherit; font-weight: 600; }
+  .data-table .row-action { width: 26px; background: #fafbfc; text-align: center; }
+  .data-table .row-action button, .data-table .series-del {
+    background: transparent; color: var(--muted); border: none; width: 20px; height: 20px; cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 0; border-radius: 3px;
+  }
+  .data-table .row-action button:hover, .data-table .series-del:hover { color: var(--danger); background: #fee; }
+  .data-table .series-head { display: flex; align-items: center; gap: 2px; min-width: 80px; }
+  .data-table .series-head input.cell { flex: 1; min-width: 0; }
+  .data-table .series-del { width: 18px; height: 18px; font-size: 13px; flex: 0 0 auto;
+                             color: var(--muted); background: transparent; }
+  .data-table .series-del:hover { color: white; background: var(--danger); }
+  .data-table .add-btn { background: var(--accent); color: white; }
+  .data-table .add-btn:hover { background: #0860c7; color: white; }
+  .data-table thead th.series-col { white-space: nowrap; }
+  .data-table .series-tag { font-size: 10px; color: var(--muted); font-style: italic; padding: 0 4px 2px; }
+
+  /* Color popover */
+  #color-popover {
+    display: none; position: fixed; background: white; border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+    z-index: 1000; width: 130px;
+  }
+  #color-popover .swatch-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .swatch-btn { width: 100%; aspect-ratio: 1; border: 1px solid rgba(0,0,0,0.12); border-radius: 3px; padding: 0; cursor: pointer; }
+  .swatch-btn:hover { transform: scale(1.12); box-shadow: 0 0 0 2px rgba(9,105,218,0.3); }
+  .swatch-btn.active { box-shadow: 0 0 0 2px var(--accent); }
+  .color-trigger { width: 26px; height: 22px; border: 1px solid var(--border); border-radius: 3px; cursor: pointer; padding: 0; }
+  .color-trigger:hover { border-color: var(--accent); }
+  .plot-wrap { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 8px;
+               display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .help { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .error { color: var(--danger); font-size: 12px; margin-top: 6px; }
+  .footer { font-size: 11px; color: var(--muted); margin-top: 10px; }
+  details > summary { cursor: pointer; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <h1>Plot Creator</h1>
+
+    <h2>1 · Data</h2>
+    <details open style="margin-bottom: 8px;">
+      <summary>Paste raw text (Excel format)</summary>
+      <div style="margin-top: 6px;">
+        <textarea id="data-input" placeholder="Paste tab-separated data. First column = X. Header row = series names.
+Example:
+x	g_P=1	g_P=4	g_P=8
+1e-8	0.552	0.301	0.213
+1e-7	0.547	0.302	0.213
+..."></textarea>
+        <div class="row" style="margin-top: 6px;">
+          <button id="parse-btn">Parse text into table</button>
+        </div>
+        <div id="parse-msg" class="help"></div>
+      </div>
+    </details>
+    <div class="row" style="margin-bottom: 6px;">
+      <button class="secondary" id="sample-btn">Load sample</button>
+      <button class="secondary" id="save-btn" title="Save project (data + all settings) to a .json file">Save</button>
+      <button class="secondary" id="load-btn" title="Load a saved project">Load</button>
+      <button class="secondary" id="clear-btn">Clear</button>
+      <input type="file" id="load-input" accept=".json,application/json" style="display:none" />
+    </div>
+    <div id="data-table-wrap"></div>
+    <div class="help" style="margin-top:6px;">
+      Click any cell to edit. Paste a range from Excel into any cell — the table will auto-expand.
+      <b>×</b> next to a row or a series header deletes it; <b>+</b> at the bottom-left adds a row, <b>+</b> at the header right adds a series. Series names are editable in the header row.
+      <br><b>Error columns:</b> add a new series with <b>+</b>, then rename it with the suffix
+      <code>_err</code> (symmetric ±), or <code>_err+</code> and <code>_err-</code> (asymmetric upper / lower).
+      On blur the column is auto-linked to its base series (e.g. <code>g_P=1_err+</code> → <code>g_P=1</code>) and shows up as the <i>+err of g_P=1</i> tag.
+    </div>
+
+    <h2>2 · Axes</h2>
+    <div class="controls">
+      <label>X title</label>          <input type="text" id="x-title" value="" />
+      <label>X scale</label>
+      <select id="x-scale">
+        <option value="log" selected>Log</option>
+        <option value="linear">Linear</option>
+      </select>
+      <label>X tick labels</label>
+      <select id="x-tick-style">
+        <option value="power" selected>Powers of 10 (10⁻⁸, 10⁻⁶ …)</option>
+        <option value="decimal">Decimal (0.000001, 0.0001 …)</option>
+        <option value="sci">Scientific (1E-08, 1E-06 …)</option>
+      </select>
+      <label>X label step</label>
+      <select id="x-label-step">
+        <option value="1" selected>Every tick</option>
+        <option value="2">Every 2nd tick</option>
+        <option value="3">Every 3rd tick</option>
+        <option value="4">Every 4th tick</option>
+      </select>
+      <label>Plot title</label>       <input type="text" id="plot-title" value="" placeholder="(optional)" />
+      <label>Y title</label>          <input type="text" id="y-title" value="$\sqrt{\langle \sigma^2 \rangle}$" />
+      <label>Y scale</label>
+      <select id="y-scale">
+        <option value="linear" selected>Linear</option>
+        <option value="log">Log</option>
+      </select>
+      <label>Y tick labels</label>
+      <select id="y-tick-style">
+        <option value="power" selected>Powers of 10 (10⁻³, 10⁻² …)</option>
+        <option value="decimal">Decimal (0.001, 0.01 …)</option>
+        <option value="sci">Scientific (1E-03, 1E-02 …)</option>
+      </select>
+      <label>Y label step</label>
+      <select id="y-label-step">
+        <option value="1" selected>Every tick</option>
+        <option value="2">Every 2nd tick</option>
+        <option value="3">Every 3rd tick</option>
+        <option value="4">Every 4th tick</option>
+      </select>
+      <label>X min (auto = blank)</label> <input type="text" id="x-min" placeholder="auto, e.g. 1e-8" />
+      <label>X max (auto = blank)</label> <input type="text" id="x-max" placeholder="auto, e.g. 1" />
+      <label>Y min (auto = blank)</label> <input type="text" id="y-min" placeholder="auto" />
+      <label>Y max (auto = blank)</label> <input type="text" id="y-max" placeholder="auto" />
+      <label>Legend position</label>
+      <select id="legend-pos">
+        <option value="tr" selected>Top-right (inside)</option>
+        <option value="tl">Top-left (inside)</option>
+        <option value="br">Bottom-right (inside)</option>
+        <option value="bl">Bottom-left (inside)</option>
+        <option value="outside-r">Outside, right</option>
+      </select>
+      <label>Axis frame</label>
+      <select id="frame-style">
+        <option value="L-out" selected>L-frame, ticks outward</option>
+        <option value="L-in">L-frame, ticks inward</option>
+        <option value="box-out">Full box, ticks outward</option>
+        <option value="box-in">Full box, ticks inward</option>
+      </select>
+    </div>
+    <div class="help">Y title &amp; plot title support <b>LaTeX</b> (wrap in <code>$…$</code>, e.g. <code>$\sqrt{\langle \sigma^2 \rangle}$</code>) and <b>HTML</b> (e.g. <code>&amp;sigma;&lt;sup&gt;2&lt;/sup&gt;</code>). Note: LaTeX in PNG/SVG export can be unreliable — use HTML if export quality matters.</div>
+
+    <h2>3 · Series</h2>
+    <div id="series-controls">
+      <div class="help">Paste data first.</div>
+    </div>
+
+    <h2>4 · Interaction</h2>
+    <div class="row">
+      <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:500;">
+        <input type="checkbox" id="edit-points" />
+        Edit guide points (shape the curve, leave data untouched)
+      </label>
+      <button class="secondary" id="reset-guides">Reset guides to data</button>
+    </div>
+    <div class="help">When on, you'll see <b>halo rings</b> around each data point — drag a ring vertically to bend the guide curve through that location. Your <b>original data is never modified</b>; guides are hidden in PNG/SVG export. Hold <b>Shift</b> to snap to 0.01. The legend is always draggable.</div>
+
+    <h2>5 · Export</h2>
+    <div class="toolbar">
+      <button id="export-png">Download PNG</button>
+      <button class="secondary" id="export-svg">Download SVG</button>
+    </div>
+
+    <details>
+      <summary>Plot style options</summary>
+      <div class="controls" style="margin-top: 6px;">
+        <label>Width (px)</label>  <input type="number" id="plot-w" value="700" />
+        <label>Height (px)</label> <input type="number" id="plot-h" value="500" />
+        <label>Text size (px)</label> <input type="number" id="text-size" value="14" min="8" max="32" />
+        <label>X title size (px)</label> <input type="text" id="x-title-size" placeholder="auto (= Text size)" />
+        <label>Y title size (px)</label> <input type="text" id="y-title-size" placeholder="auto (= Text size)" />
+        <label>Legend text size (px)</label> <input type="text" id="legend-text-size" placeholder="auto (= Text size)" />
+        <label>Right margin (px)</label> <input type="text" id="right-margin" placeholder="auto" />
+        <label>Font family</label>
+        <select id="font-family">
+          <option value="Arial, sans-serif" selected>Arial</option>
+          <option value="Helvetica, Arial, sans-serif">Helvetica</option>
+          <option value='"Times New Roman", Times, serif'>Times</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value='"Courier New", Courier, monospace'>Courier (mono)</option>
+        </select>
+        <label>Show grid</label>
+        <select id="show-grid">
+          <option value="yes" selected>Yes</option>
+          <option value="no">No</option>
+        </select>
+        <label>Show legend</label>
+        <select id="show-legend">
+          <option value="yes" selected>Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+      <div class="help">Text size affects axis titles, tick labels, and legend (unless Legend text size is set). The plot title is automatically 2 px larger.</div>
+    </details>
+
+    <div class="footer">Tip: copy any contiguous range from Excel (header row + data) and paste it into any cell of the data table — the table will auto-expand to fit the block.</div>
+  </div>
+
+  <div class="splitter" id="splitter" title="Drag to resize panel"></div>
+  <div class="plot-wrap">
+    <div id="plot"></div>
+  </div>
+</div>
+
+<div id="color-popover" role="dialog" aria-label="Color picker">
+  <div class="swatch-grid" id="swatch-grid"></div>
+  <div style="display:flex; align-items:center; gap:6px; margin-top:8px;">
+    <span style="font-size:11px; color:var(--muted);">Custom</span>
+    <input type="color" id="custom-color" value="#000000" style="flex:1;" />
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// Plot Creator — implementation overview
+//
+// LIBRARIES
+//   * Plotly.js (loaded at the top of this file from cdn.plot.ly). Every visible
+//     mark on the chart is a Plotly `scatter` trace. We emit several per series.
+//   * MathJax v2 — only so Plotly can render LaTeX inside titles wrapped in $..$.
+//   * No build step, no framework, no NPM packages. One self-contained HTML.
+//
+// STATE  (two globals, indexed in parallel by the series index `i`)
+//   dataset = {
+//     xName: string,
+//     xValues: (number|null)[],          // length = nRows
+//     series: [{
+//       name: string,
+//       values:      (number|null)[],    // ORIGINAL data; never modified by drag
+//       guideValues: (number|null)[],    // user-draggable guide points; init = values
+//       role:        'data' | 'err' | 'err+' | 'err-',
+//       linkedTo:    number|null,        // err roles: idx of the base data series
+//       errPlus:     number|null,        // data roles: idx of the +error series
+//       errMinus:    number|null,        // data roles: idx of the -error series
+//     }, ...]
+//   }
+//   seriesStyles[i] = { color, marker, dash, shape, visible, errorStyle, legendStyle }
+//
+// PIPELINE
+//   parseClipboard(text)        ─▶  dataset
+//   renderDataTable()           ─▶  editable HTML table (state → DOM)
+//   renderSeriesControls()      ─▶  styling HTML table  (state → DOM)
+//   buildFigure({forExport})    ─▶  { traces, layout }  (state → Plotly figure)
+//   renderPlot()                ─▶  Plotly.react('plot', traces, layout)
+//   downloadAs(format)          ─▶  Plotly.toImage(...) with forExport: true
+//                                   (so shadow markers are hidden in PNG/SVG)
+//
+// TRACE LAYOUT  (per visible data series; order matters so things stack right)
+//   1. Phantom legend trace — x=[null], y=[null]. Carries only the legend swatch.
+//      Empty `name` → `showlegend: false` (hides from legend, plot still drawn).
+//   2. Optional error band  — two filler traces with `fill: 'tonexty'` between
+//      (values - errMinus) and (values + errPlus).
+//   3. Optional guide curve — line through `guideValues`. Shape is linear,
+//      Plotly spline, or our custom PCHIP (monotonic, no overshoot).
+//   4. Data markers         — at (xValues, values). Carries `error_y` if T-bars.
+//   5. Optional shadow markers — drag handles around guide points; edit mode
+//      only; hidden in export.
+//
+// ERROR COLUMNS
+//   Any column whose name matches `_err`, `_err+`, or `_err-` (case-insensitive)
+//   has its `role` set accordingly and `linkedTo` pointed to the base series.
+//   The base's errPlus/errMinus fields hold the matching series indices.
+//   `applyRoleFromName(j)` runs on blur of any header rename, so manual edits
+//   stay linked too.
+// =============================================================================
+
+// ---------- Constants: cycles and option lists used by Series controls ----------
+const MARKER_CYCLE = ['circle', 'diamond', 'square-open', 'triangle-up', 'circle-open', 'square', 'diamond-open', 'triangle-up-open'];
+// Tableau 10 palette
+const PALETTE = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F',
+                 '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#BAB0AC'];
+const COLOR_CYCLE = PALETTE;
+const DASH_OPTIONS = ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot'];
+const SHAPE_OPTIONS = [
+  { v: 'linear',    label: 'linear (straight)' },
+  { v: 'spline',    label: 'spline (smooth, may overshoot)' },
+  { v: 'monotonic', label: 'monotonic (smooth, no overshoot)' }
+];
+const MARKER_OPTIONS = [
+  'circle', 'circle-open', 'square', 'square-open',
+  'diamond', 'diamond-open', 'triangle-up', 'triangle-up-open',
+  'triangle-down', 'triangle-down-open', 'cross', 'x', 'star', 'star-open'
+];
+
+// ---------- Global state (see top-of-file overview for the full shape) ----------
+let dataset = null;       // null until data is parsed; rebuilt by parseClipboard
+let seriesStyles = [];    // parallel to dataset.series; held separate so it survives data edits
+
+// ============================================================================
+// SECTION 1: Error-column detection & linking
+//   - detectErrorRole: parse a column name like "Y_err+" into a role tag
+//   - applyRoleFromName: re-link one column after its name changed
+// ============================================================================
+
+// Detect whether a column name is an error column.
+// Recognized: "<base>_err", "<base>_err+", "<base>_err-", " err", "errplus", "errminus" suffix forms.
+// Returns { role: 'err' | 'err+' | 'err-', base: 'BaseName' } or null.
+function detectErrorRole(name) {
+  if (!name) return null;
+  const n = String(name).trim();
+  // Try "base_err+" / "base_err-" / "base_errplus" / "base_errminus"
+  let m = n.match(/^(.+?)[\s_]*err[\s_]*(plus|minus|\+|\-)$/i);
+  if (m) {
+    const sign = m[2].toLowerCase();
+    const role = (sign === '+' || sign === 'plus') ? 'err+' : 'err-';
+    return { role, base: m[1].trim() };
+  }
+  // Try "base_err" or "base error"
+  m = n.match(/^(.+?)[\s_]*err(or)?$/i);
+  if (m) return { role: 'err', base: m[1].trim() };
+  return null;
+}
+
+// Re-apply role detection for ONE column after its name changes.
+// Unlinks any previous error linkage for that column, then re-links if its
+// new name matches an error pattern AND a matching base series exists.
+// Preserves manual error settings on other columns.
+function applyRoleFromName(j) {
+  if (!dataset || !dataset.series[j]) return;
+  const s = dataset.series[j];
+  const det = detectErrorRole(s.name);
+
+  // Unlink from previous base, if this column was an error column
+  if (s.role && s.role !== 'data' && s.linkedTo != null) {
+    const old = dataset.series[s.linkedTo];
+    if (old) {
+      if (old.errPlus === j) old.errPlus = null;
+      if (old.errMinus === j) old.errMinus = null;
+    }
+  }
+
+  if (det) {
+    const baseIdx = dataset.series.findIndex((other, k) =>
+      k !== j && (!other.role || other.role === 'data') && other.name === det.base);
+    if (baseIdx >= 0) {
+      s.role = det.role;
+      s.linkedTo = baseIdx;
+      s.errPlus = null;
+      s.errMinus = null;
+      const base = dataset.series[baseIdx];
+      if (det.role === 'err')      { base.errPlus = j; base.errMinus = j; }
+      else if (det.role === 'err+'){ base.errPlus = j; }
+      else if (det.role === 'err-'){ base.errMinus = j; }
+      return;
+    }
+  }
+  // Either name doesn't match or no base found: treat as plain data
+  s.role = 'data';
+  s.linkedTo = null;
+}
+
+// ============================================================================
+// SECTION 2: Data ingestion
+//   - parseClipboard: text → dataset (also runs initial error auto-detection)
+//   - initSeriesStyles: ensure seriesStyles has an entry per series
+// ============================================================================
+
+function parseClipboard(text) {
+  const rows = text.trim().split(/\r?\n/).map(r => r.split('\t'));
+  if (rows.length < 2) throw new Error('Need at least a header row and one data row.');
+  const header = rows[0];
+  if (header.length < 2) throw new Error('Need at least two columns (X + 1 series). Did you paste tab-separated values?');
+
+  const xName = header[0];
+  const seriesNames = header.slice(1);
+  const xValues = [];
+  const seriesValues = seriesNames.map(() => []);
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.every(c => c === '' || c === undefined)) continue; // skip blanks
+    const x = Number(row[0]);
+    if (!Number.isFinite(x)) continue; // skip rows where X isn't numeric
+    xValues.push(x);
+    for (let j = 0; j < seriesNames.length; j++) {
+      const v = row[j + 1];
+      const num = v === undefined || v === '' ? NaN : Number(v);
+      seriesValues[j].push(Number.isFinite(num) ? num : null);
+    }
+  }
+  if (xValues.length === 0) throw new Error('No numeric data rows found.');
+
+  const series = seriesNames.map((name, j) => ({
+    name,
+    values: seriesValues[j],
+    guideValues: [...seriesValues[j]],
+    role: 'data',     // 'data' | 'err' | 'err+' | 'err-'
+    linkedTo: null,   // for error roles: index of the base data series
+    errPlus: null,    // for data roles: index of the +error series (null = no errors)
+    errMinus: null    // for data roles: index of the -error series
+  }));
+
+  // Auto-detect error columns by name suffix
+  series.forEach((s, i) => {
+    const det = detectErrorRole(s.name);
+    if (!det) return;
+    const baseIdx = series.findIndex((other, k) => k !== i && other.role === 'data' && other.name === det.base);
+    if (baseIdx < 0) return;
+    s.role = det.role;
+    s.linkedTo = baseIdx;
+  });
+  // Set the base series' errPlus/errMinus pointers
+  series.forEach((s, i) => {
+    if (s.role === 'data' || s.linkedTo == null) return;
+    const base = series[s.linkedTo];
+    if (s.role === 'err')      { base.errPlus = i; base.errMinus = i; }
+    else if (s.role === 'err+'){ base.errPlus = i; }
+    else if (s.role === 'err-'){ base.errMinus = i; }
+  });
+  // If only one side is set, mirror it (acts symmetric)
+  series.forEach(s => {
+    if (s.role !== 'data') return;
+    if (s.errPlus !== null && s.errMinus === null) s.errMinus = s.errPlus;
+    if (s.errMinus !== null && s.errPlus === null) s.errPlus = s.errMinus;
+  });
+
+  return { xName, xValues, series };
+}
+
+function initSeriesStyles(n) {
+  const existing = seriesStyles;
+  seriesStyles = [];
+  for (let i = 0; i < n; i++) {
+    seriesStyles.push(existing[i] ?? {
+      color: COLOR_CYCLE[i % COLOR_CYCLE.length],
+      marker: MARKER_CYCLE[i % MARKER_CYCLE.length],
+      dash: 'dash',
+      shape: 'linear',
+      visible: true,
+      errorStyle: 'bars',  // 'none' | 'bars' | 'band' — applied only if errPlus/errMinus set
+      legendStyle: 'both', // 'both' | 'marker' | 'line' — what shows in the legend swatch
+      markerSize: 10,      // per-series; moved from Plot style options
+      errorCapSize: 6,     // per-series; T-bar cap width (independent of markerSize)
+      lineWidth: 2,        // per-series; moved from Plot style options
+      legendRank: null     // legend order override (1 = top); null = follow draw order
+    });
+  }
+}
+
+// ============================================================================
+// SECTION 3: Series controls panel (styles + error-bar config)
+//   - renderSeriesControls: rebuild the per-series styling UI
+//   - escapeHtml: small helper to avoid XSS when interpolating names/values
+// ============================================================================
+
+// Reorder data series by dragging rows in the Series table. The visual list shows
+// data series only (error columns are hidden), so `fromVis`/`toVis` index into
+// that filtered list. We permute the data-series slots of dataset.series (and the
+// parallel seriesStyles) to match the new order, leave error columns in place, and
+// remap every cross-series index reference (linkedTo / errPlus / errMinus) through
+// an old→new map. Trace emission follows dataset.series order, so this also sets
+// the plot's draw order (later in the list = drawn on top) and the legend order.
+function reorderDataSeries(fromVis, toVis) {
+  if (!dataset) return;
+  const slots = [];                              // full-array indices of data series, in order
+  dataset.series.forEach((s, i) => { if (!s.role || s.role === 'data') slots.push(i); });
+  const n = slots.length;
+  if (fromVis < 0 || fromVis >= n || toVis < 0 || toVis >= n || fromVis === toVis) return;
+
+  const order = slots.slice();                   // order[k] = old index that should land in slots[k]
+  const [moved] = order.splice(fromVis, 1);
+  order.splice(toVis, 0, moved);
+
+  const N = dataset.series.length;
+  const map = new Array(N);
+  for (let i = 0; i < N; i++) map[i] = i;         // identity covers error-column slots
+  const newSeries = dataset.series.slice();
+  const newStyles = seriesStyles.slice();
+  slots.forEach((slotPos, k) => {
+    const oldIdx = order[k];
+    newSeries[slotPos] = dataset.series[oldIdx];
+    newStyles[slotPos] = seriesStyles[oldIdx];
+    map[oldIdx] = slotPos;
+  });
+  dataset.series = newSeries;
+  seriesStyles = newStyles;
+
+  // Remap index references so error links survive the shuffle.
+  dataset.series.forEach(s => {
+    ['linkedTo', 'errPlus', 'errMinus'].forEach(key => {
+      if (s[key] != null && map[s[key]] != null) s[key] = map[s[key]];
+    });
+  });
+
+  renderSeriesControls();
+  renderDataTable();
+  syncTextarea();
+  renderPlot();
+}
+
+function renderSeriesControls() {
+  closeColorPopover();
+  const div = document.getElementById('series-controls');
+  if (!dataset) { div.innerHTML = '<div class="help">Paste data first.</div>'; return; }
+
+  let html = '<table class="series-table"><thead><tr>'
+    + '<th title="Drag to reorder draw order"></th>'
+    + '<th>Show</th><th>Label</th><th>Color</th><th>Marker</th><th>Size</th><th>Dash</th><th>Width</th><th>Shape</th><th>Legend</th>'
+    + '<th title="Legend order (1 = top). Blank = follow draw order">Lgnd#</th>'
+    + '</tr></thead><tbody>';
+
+  let vis = -1;
+  dataset.series.forEach((s, i) => {
+    if (s.role && s.role !== 'data') return;     // error columns aren't shown as their own series
+    vis++;
+    const st = seriesStyles[i];
+    html += `<tr class="series-row" data-vis="${vis}">
+      <td class="drag-handle" draggable="true" data-vis="${vis}" title="Drag to reorder draw order (lower = drawn on top)">⠿</td>
+      <td><input type="checkbox" data-i="${i}" data-k="visible" ${st.visible ? 'checked' : ''}/></td>
+      <td><input type="text" data-i="${i}" data-k="name" value="${escapeHtml(s.name)}"/></td>
+      <td><button class="color-trigger" data-i="${i}" style="background:${st.color}" title="Pick color"></button></td>
+      <td><select data-i="${i}" data-k="marker">
+        <option value="none" ${st.marker === 'none' ? 'selected' : ''}>none</option>
+        ${MARKER_OPTIONS.map(m => `<option value="${m}" ${m === st.marker ? 'selected' : ''}>${m}</option>`).join('')}
+      </select></td>
+      <td><input class="num-cell" type="number" data-i="${i}" data-k="markerSize" value="${st.markerSize ?? 10}" min="0" max="50" step="1" /></td>
+      <td><select data-i="${i}" data-k="dash">
+        ${DASH_OPTIONS.map(d => `<option value="${d}" ${d === st.dash ? 'selected' : ''}>${d}</option>`).join('')}
+        <option value="none" ${st.dash === 'none' ? 'selected' : ''}>none</option>
+      </select></td>
+      <td><input class="num-cell" type="number" data-i="${i}" data-k="lineWidth" value="${st.lineWidth ?? 2}" min="0" max="20" step="0.5" /></td>
+      <td><select data-i="${i}" data-k="shape">
+        ${SHAPE_OPTIONS.map(o => `<option value="${o.v}" ${o.v === (st.shape || 'linear') ? 'selected' : ''}>${o.label}</option>`).join('')}
+      </select></td>
+      <td><select data-i="${i}" data-k="legendStyle">
+        <option value="both"   ${(st.legendStyle || 'both') === 'both' ? 'selected' : ''}>marker + line</option>
+        <option value="marker" ${st.legendStyle === 'marker' ? 'selected' : ''}>marker only</option>
+        <option value="line"   ${st.legendStyle === 'line' ? 'selected' : ''}>line only</option>
+      </select></td>
+      <td><input class="num-cell" type="number" data-i="${i}" data-k="legendRank" value="${st.legendRank ?? ''}" min="1" step="1" placeholder="auto" title="Legend position (1 = top); blank follows draw order" /></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  html += '<div class="help">Drag the <b>⠿</b> handle to set the <b>draw order</b>: series '
+        + '<b>lower in the list are drawn on top</b> (in front). The <b>legend order</b> is independent — '
+        + 'set <b>Lgnd#</b> (1 = top) to reorder the legend; leave it blank to follow the draw order.</div>';
+  div.innerHTML = html;   // REPLACE the panel (errors section is appended below)
+
+  // === Error-bar configuration (one row per data series) ===
+  const dataSeries = dataset.series.map((s, i) => ({ s, i })).filter(o => !o.s.role || o.s.role === 'data');
+  if (dataSeries.length) {
+    const colOptions = (selectedIdx, includeSameAsPlus = false) => {
+      let opts = '<option value="">None</option>';
+      if (includeSameAsPlus) opts += `<option value="same" ${selectedIdx === 'same' ? 'selected' : ''}>= +err</option>`;
+      dataset.series.forEach((c, ci) => {
+        opts += `<option value="${ci}" ${selectedIdx == ci ? 'selected' : ''}>${escapeHtml(c.name)}${c.role && c.role !== 'data' ? ' [err]' : ''}</option>`;
+      });
+      return opts;
+    };
+    html = '<div style="margin-top:10px;"><details><summary style="font-weight:600; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">Error bars</summary>';
+    html += '<table class="series-table" style="margin-top:6px;"><thead><tr>'
+      + '<th>Series</th><th>Style</th><th>+err col</th><th>-err col</th><th title="T-bar cap width (independent of marker size)">Cap size</th>'
+      + '</tr></thead><tbody>';
+    dataSeries.forEach(({ s, i }) => {
+      const st = seriesStyles[i];
+      const minusVal = (s.errMinus !== null && s.errMinus === s.errPlus) ? 'same' : (s.errMinus !== null ? s.errMinus : '');
+      html += `<tr>
+        <td>${escapeHtml(s.name)}</td>
+        <td><select data-i="${i}" data-k="errorStyle">
+          <option value="none"  ${st.errorStyle === 'none' ? 'selected' : ''}>None</option>
+          <option value="bars"  ${st.errorStyle === 'bars' ? 'selected' : ''}>T-bars</option>
+          <option value="band"  ${st.errorStyle === 'band' ? 'selected' : ''}>Band</option>
+        </select></td>
+        <td><select class="err-plus" data-i="${i}">${colOptions(s.errPlus ?? '')}</select></td>
+        <td><select class="err-minus" data-i="${i}">${colOptions(minusVal, true)}</select></td>
+        <td><input class="num-cell" type="number" data-i="${i}" data-k="errorCapSize" value="${st.errorCapSize ?? 6}" min="0" max="50" step="1" /></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    html += '<div class="help">Errors are <b>auto-detected</b> from column suffixes <code>_err</code>, <code>_err+</code>, <code>_err-</code>. Use the dropdowns to override.</div>';
+    html += '</details></div>';
+    div.insertAdjacentHTML('beforeend', html);
+
+    // Wire the error-config dropdowns
+    div.querySelectorAll('.err-plus').forEach(el => {
+      el.addEventListener('change', () => {
+        const i = +el.dataset.i;
+        const v = el.value === '' ? null : +el.value;
+        dataset.series[i].errPlus = v;
+        // If errMinus was "same as plus", keep them synced
+        const minusEl = div.querySelector(`.err-minus[data-i="${i}"]`);
+        if (minusEl && minusEl.value === 'same') dataset.series[i].errMinus = v;
+        renderPlot();
+      });
+    });
+    div.querySelectorAll('.err-minus').forEach(el => {
+      el.addEventListener('change', () => {
+        const i = +el.dataset.i;
+        if (el.value === 'same') {
+          dataset.series[i].errMinus = dataset.series[i].errPlus;
+        } else {
+          dataset.series[i].errMinus = el.value === '' ? null : +el.value;
+        }
+        renderPlot();
+      });
+    });
+
+  }
+
+  div.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', () => {
+      const i = +el.dataset.i, k = el.dataset.k;
+      if (!k) return;   // err-plus / err-minus selects are wired separately
+      if (k === 'name') {
+        dataset.series[i].name = el.value;
+        renderDataTable();   // keep the data-table header in sync
+        syncTextarea();
+      }
+      else if (k === 'visible') seriesStyles[i].visible = el.checked;
+      else seriesStyles[i][k] = el.value;
+      renderPlot();
+    });
+    // On blur of a name field, re-detect role (so renaming to/from `_err` works live)
+    if (el.dataset.k === 'name') {
+      el.addEventListener('change', () => {
+        applyRoleFromName(+el.dataset.i);
+        renderSeriesControls();
+        renderDataTable();
+        renderPlot();
+      });
+    }
+  });
+
+  div.querySelectorAll('.color-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openColorPopover(btn, +btn.dataset.i);
+    });
+  });
+
+  wireSeriesRowDrag(div);
+}
+
+// Drag-and-drop reordering of the Series table rows (sets plot draw order).
+// The grip cell (.drag-handle) is the only draggable element so the row's inputs
+// stay normally clickable/selectable; the row itself is the drop target.
+function wireSeriesRowDrag(div) {
+  let fromVis = null;
+  const rows = div.querySelectorAll('tr.series-row');
+
+  div.querySelectorAll('.drag-handle').forEach(handle => {
+    handle.addEventListener('dragstart', (e) => {
+      fromVis = +handle.dataset.vis;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(fromVis));   // Firefox needs payload
+      const row = handle.closest('tr.series-row');
+      if (row) row.classList.add('dragging');
+    });
+    handle.addEventListener('dragend', () => {
+      fromVis = null;
+      rows.forEach(r => r.classList.remove('dragging', 'drop-above', 'drop-below'));
+    });
+  });
+
+  rows.forEach(row => {
+    row.addEventListener('dragover', (e) => {
+      if (fromVis === null) return;
+      e.preventDefault();                          // allow drop
+      e.dataTransfer.dropEffect = 'move';
+      const rect = row.getBoundingClientRect();
+      const below = (e.clientY - rect.top) > rect.height / 2;
+      row.classList.toggle('drop-below', below);
+      row.classList.toggle('drop-above', !below);
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drop-above', 'drop-below'));
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const src = fromVis !== null ? fromVis : +e.dataTransfer.getData('text/plain');
+      const tv = +row.dataset.vis;
+      const rect = row.getBoundingClientRect();
+      const below = (e.clientY - rect.top) > rect.height / 2;
+      const insertBefore = below ? tv + 1 : tv;          // gap index in the original list
+      const to = src < insertBefore ? insertBefore - 1 : insertBefore;  // → final index post-removal
+      rows.forEach(r => r.classList.remove('drop-above', 'drop-below'));
+      reorderDataSeries(src, to);
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ============================================================================
+// SECTION 4: Color popover (10 Tableau swatches + custom picker)
+//   Opens when the user clicks the color trigger button in the Series table.
+// ============================================================================
+
+let activeColorTarget = null;  // { seriesIdx, triggerEl } when popover is open
+
+function initColorPopover() {
+  const grid = document.getElementById('swatch-grid');
+  grid.innerHTML = '';
+  PALETTE.forEach(c => {
+    const sw = document.createElement('button');
+    sw.className = 'swatch-btn';
+    sw.style.background = c;
+    sw.title = c;
+    sw.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!activeColorTarget) return;
+      setSeriesColor(activeColorTarget.seriesIdx, c);
+      closeColorPopover();
+    });
+    grid.appendChild(sw);
+  });
+
+  const custom = document.getElementById('custom-color');
+  custom.addEventListener('input', () => {
+    if (!activeColorTarget) return;
+    setSeriesColor(activeColorTarget.seriesIdx, custom.value);
+  });
+  custom.addEventListener('change', closeColorPopover);
+
+  document.addEventListener('click', (e) => {
+    if (!activeColorTarget) return;
+    if (e.target.closest('#color-popover')) return;
+    if (e.target.closest('.color-trigger')) return;
+    closeColorPopover();
+  });
+}
+
+function openColorPopover(triggerEl, seriesIdx) {
+  const pop = document.getElementById('color-popover');
+  const rect = triggerEl.getBoundingClientRect();
+  // Position to the right of the trigger, clamped to viewport
+  let left = rect.right + 6;
+  let top = rect.top;
+  if (left + 140 > window.innerWidth) left = rect.left - 144;
+  if (top + 100 > window.innerHeight) top = window.innerHeight - 110;
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+  pop.style.display = 'block';
+  document.getElementById('custom-color').value = seriesStyles[seriesIdx].color;
+  // Highlight active swatch
+  pop.querySelectorAll('.swatch-btn').forEach((sw, i) => {
+    sw.classList.toggle('active', PALETTE[i].toLowerCase() === seriesStyles[seriesIdx].color.toLowerCase());
+  });
+  activeColorTarget = { seriesIdx, triggerEl };
+}
+
+function closeColorPopover() {
+  document.getElementById('color-popover').style.display = 'none';
+  activeColorTarget = null;
+}
+
+function setSeriesColor(i, color) {
+  seriesStyles[i].color = color;
+  // Update the trigger button background live
+  const trigger = document.querySelector(`.color-trigger[data-i="${i}"]`);
+  if (trigger) trigger.style.background = color;
+  renderPlot();
+}
+
+// ============================================================================
+// SECTION 5: Data table (editable spreadsheet view of `dataset`)
+//   - renderDataTable: rebuild the table from state
+//   - bindTableEvents: wire input/click/paste handlers on the freshly-built DOM
+//   - handleCellPaste: Excel-style range paste; auto-expands rows/columns
+//   - syncTextarea: mirror current dataset into the raw-text textarea
+// ============================================================================
+
+function renderDataTable() {
+  const wrap = document.getElementById('data-table-wrap');
+  if (!dataset) {
+    wrap.innerHTML = '<div class="help">No data yet. Click <b>Load sample</b>, or expand <b>Paste raw text</b> below and paste from Excel.</div>';
+    return;
+  }
+  const nRows = dataset.xValues.length;
+  const nSer = dataset.series.length;
+
+  let html = '<div class="data-table-scroll"><table class="data-table"><thead><tr>';
+  html += '<th class="row-action"></th>';
+  html += `<th><input class="cell hdr-x" type="text" value="${escapeHtml(dataset.xName)}" /></th>`;
+  dataset.series.forEach((s, j) => {
+    let tag = '';
+    if (s.role && s.role !== 'data' && s.linkedTo != null && dataset.series[s.linkedTo]) {
+      const baseName = dataset.series[s.linkedTo].name;
+      const label = s.role === 'err+' ? '+err' : (s.role === 'err-' ? '−err' : '±err');
+      tag = `<div class="series-tag">${escapeHtml(label)} of ${escapeHtml(baseName)}</div>`;
+    }
+    html += `<th class="series-col">
+      <div class="series-head">
+        <input class="cell hdr-series" data-j="${j}" type="text" value="${escapeHtml(s.name)}" />
+        <button class="series-del" data-j="${j}" title="Delete this series">×</button>
+      </div>
+      ${tag}
+    </th>`;
+  });
+  html += `<th class="row-action"><button class="add-btn" id="add-series" title="Add series">+</button></th>`;
+  html += '</tr></thead><tbody>';
+
+  for (let i = 0; i < nRows; i++) {
+    const xv = dataset.xValues[i];
+    html += `<tr>
+      <td class="row-action"><button class="row-del" data-i="${i}" title="Delete row">×</button></td>
+      <td><input class="cell xval" data-i="${i}" type="text" value="${xv == null ? '' : xv}" /></td>`;
+    for (let j = 0; j < nSer; j++) {
+      const v = dataset.series[j].values[i];
+      html += `<td><input class="cell yval" data-i="${i}" data-j="${j}" type="text" value="${v == null ? '' : v}" /></td>`;
+    }
+    html += '<td class="row-action"></td></tr>';
+  }
+  html += `<tr><td class="row-action"><button class="add-btn" id="add-row" title="Add row">+</button></td>`;
+  html += `<td colspan="${nSer + 2}" class="help" style="padding:4px 6px; font-size:11px;">${nRows} row${nRows===1?'':'s'} × ${nSer} series</td>`;
+  html += '</tr></tbody></table></div>';
+
+  wrap.innerHTML = html;
+  bindTableEvents(wrap);
+}
+
+function bindTableEvents(wrap) {
+  wrap.querySelector('.hdr-x').addEventListener('input', (e) => {
+    dataset.xName = e.target.value;
+    syncTextarea();
+    renderPlot();
+  });
+  wrap.querySelectorAll('.hdr-series').forEach(el => {
+    el.addEventListener('input', () => {
+      dataset.series[+el.dataset.j].name = el.value;
+      syncTextarea();
+      renderSeriesControls();
+      renderPlot();
+    });
+    // On blur / Enter: re-run error-role detection so manually-typed `_err` columns get linked
+    el.addEventListener('change', () => {
+      applyRoleFromName(+el.dataset.j);
+      renderDataTable();
+      renderSeriesControls();
+      syncTextarea();
+      renderPlot();
+    });
+  });
+  wrap.querySelectorAll('.xval').forEach(el => {
+    el.addEventListener('input', () => {
+      const i = +el.dataset.i;
+      const raw = el.value.trim();
+      const v = raw === '' ? null : Number(raw);
+      const valid = raw === '' || Number.isFinite(v);
+      el.classList.toggle('bad', !valid);
+      if (valid) dataset.xValues[i] = v;
+      syncTextarea();
+      renderPlot();
+    });
+  });
+  wrap.querySelectorAll('.yval').forEach(el => {
+    el.addEventListener('input', () => {
+      const i = +el.dataset.i, j = +el.dataset.j;
+      const raw = el.value.trim();
+      const v = raw === '' ? null : Number(raw);
+      const valid = raw === '' || Number.isFinite(v);
+      el.classList.toggle('bad', !valid);
+      if (valid) {
+        dataset.series[j].values[i] = v;
+        // When the data point changes, snap the guide point to match.
+        // (The user can drag it again in edit mode.)
+        dataset.series[j].guideValues[i] = v;
+      }
+      syncTextarea();
+      renderPlot();
+    });
+  });
+  wrap.querySelectorAll('.row-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.i;
+      dataset.xValues.splice(i, 1);
+      dataset.series.forEach(s => {
+        s.values.splice(i, 1);
+        s.guideValues.splice(i, 1);
+      });
+      renderDataTable();
+      syncTextarea();
+      renderPlot();
+    });
+  });
+  wrap.querySelectorAll('.series-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const j = +btn.dataset.j;
+      if (dataset.series.length <= 1) { alert('At least one series is required.'); return; }
+      dataset.series.splice(j, 1);
+      seriesStyles.splice(j, 1);
+      // Fix up cross-series references after the index shift
+      dataset.series.forEach(s => {
+        ['linkedTo', 'errPlus', 'errMinus'].forEach(k => {
+          if (s[k] === j) s[k] = null;
+          else if (s[k] != null && s[k] > j) s[k] -= 1;
+        });
+      });
+      renderDataTable();
+      renderSeriesControls();
+      syncTextarea();
+      renderPlot();
+    });
+  });
+  const addRow = wrap.querySelector('#add-row');
+  if (addRow) addRow.addEventListener('click', () => {
+    dataset.xValues.push(null);
+    dataset.series.forEach(s => { s.values.push(null); s.guideValues.push(null); });
+    renderDataTable();
+    syncTextarea();
+    renderPlot();
+  });
+  const addSer = wrap.querySelector('#add-series');
+  if (addSer) addSer.addEventListener('click', () => {
+    const idx = dataset.series.length;
+    dataset.series.push({
+      name: 'Series ' + (idx + 1),
+      values: new Array(dataset.xValues.length).fill(null),
+      guideValues: new Array(dataset.xValues.length).fill(null),
+      role: 'data', linkedTo: null, errPlus: null, errMinus: null
+    });
+    initSeriesStyles(dataset.series.length);
+    renderDataTable();
+    renderSeriesControls();
+    syncTextarea();
+    renderPlot();
+  });
+
+  // Excel-style paste-range support on any cell
+  wrap.querySelectorAll('.cell').forEach(el => {
+    el.addEventListener('paste', handleCellPaste);
+  });
+}
+
+function handleCellPaste(e) {
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (!text) return;
+  const lines = text.replace(/\r/g, '').split('\n');
+  // Trim a single trailing empty line (Excel often appends one)
+  while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  // Single cell paste: let the browser handle it normally
+  if (lines.length === 1 && !lines[0].includes('\t')) return;
+
+  e.preventDefault();
+  const block = lines.map(l => l.split('\t'));
+
+  const target = e.target;
+  const isXVal = target.classList.contains('xval');
+  const isYVal = target.classList.contains('yval');
+  if (!isXVal && !isYVal) return;  // ignore paste-range on headers for now
+
+  const startI = +target.dataset.i;
+  // -1 = pasting into X column; >=0 = pasting starting at that series index
+  const startJ = isXVal ? -1 : +target.dataset.j;
+
+  // Auto-expand rows
+  const neededRows = startI + block.length;
+  while (dataset.xValues.length < neededRows) {
+    dataset.xValues.push(null);
+    dataset.series.forEach(s => { s.values.push(null); s.guideValues.push(null); });
+  }
+  // Auto-expand series
+  const widest = Math.max(...block.map(r => r.length));
+  const lastColIdx = startJ === -1 ? widest - 2 : startJ + widest - 1;  // index of the last series filled
+  while (dataset.series.length <= lastColIdx) {
+    const idx = dataset.series.length;
+    dataset.series.push({
+      name: 'Series ' + (idx + 1),
+      values: new Array(dataset.xValues.length).fill(null),
+      guideValues: new Array(dataset.xValues.length).fill(null),
+      role: 'data', linkedTo: null, errPlus: null, errMinus: null
+    });
+  }
+  initSeriesStyles(dataset.series.length);
+
+  block.forEach((row, ri) => {
+    row.forEach((cellText, ci) => {
+      const i = startI + ri;
+      const raw = cellText.trim();
+      const num = raw === '' ? null : Number(raw);
+      const val = (raw === '' || Number.isFinite(num)) ? num : null;
+      if (startJ === -1) {
+        // First column of pasted block goes to X, rest to series
+        if (ci === 0) dataset.xValues[i] = val;
+        else {
+          const j = ci - 1;
+          dataset.series[j].values[i] = val;
+          dataset.series[j].guideValues[i] = val;
+        }
+      } else {
+        const j = startJ + ci;
+        dataset.series[j].values[i] = val;
+        dataset.series[j].guideValues[i] = val;
+      }
+    });
+  });
+
+  renderDataTable();
+  renderSeriesControls();
+  syncTextarea();
+  renderPlot();
+}
+
+function syncTextarea() {
+  if (!dataset) { document.getElementById('data-input').value = ''; return; }
+  const header = [dataset.xName, ...dataset.series.map(s => s.name)].join('\t');
+  const rows = dataset.xValues.map((xv, i) => {
+    const cells = [xv == null ? '' : xv, ...dataset.series.map(s => {
+      const v = s.values[i];
+      return v == null ? '' : v;
+    })];
+    return cells.join('\t');
+  });
+  document.getElementById('data-input').value = [header, ...rows].join('\n');
+}
+
+// ============================================================================
+// SECTION 6: Axis-tick label formatters (used for the X axis)
+//   - powerTickLabel: "10⁻⁸" using Unicode superscripts
+//   - decimalTickLabel: "0.0001" (plain decimal)
+//   - sciTickLabel: "1E-08" (Excel-style scientific notation)
+//   - makeLogTicks: enumerate one tick per decade and label them
+// ============================================================================
+
+function powerTickLabel(v) {
+  if (v === 0) return '0';
+  const exp = Math.log10(Math.abs(v));
+  const rounded = Math.round(exp);
+  if (Math.abs(exp - rounded) > 1e-6) return ''; // only label round powers
+  const sup = String(rounded).replace(/-/g, '−').split('').map(c => {
+    const map = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','−':'⁻' };
+    return map[c] || c;
+  }).join('');
+  return `10${sup}`;
+}
+
+function decimalTickLabel(v) {
+  if (v === 0) return '0';
+  const abs = Math.abs(v);
+  if (abs >= 1e-4 && abs < 1e7) {
+    // Trim trailing zeros, keep up to 10 significant figures
+    let s = v.toPrecision(10);
+    if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s;
+  }
+  return v.toExponential().replace('e', 'E');
+}
+
+function sciTickLabel(v) {
+  if (v === 0) return '0';
+  const [m, e] = v.toExponential().split('e');
+  const mantissa = parseFloat(m);
+  const exp = parseInt(e, 10);
+  const expStr = (exp < 0 ? '-' : '+') + String(Math.abs(exp)).padStart(2, '0');
+  return (mantissa === 1 ? '1' : mantissa) + 'E' + expStr;
+}
+
+function makeLogTicks(min, max, style, step) {
+  step = Math.max(1, step | 0);   // coerce to a positive integer; default 1
+  const startExp = Math.floor(Math.log10(min));
+  const endExp = Math.ceil(Math.log10(max));
+  const vals = [];
+  for (let e = startExp; e <= endExp; e++) vals.push(Math.pow(10, e));
+  const labelFn = style === 'power' ? powerTickLabel : (style === 'sci' ? sciTickLabel : decimalTickLabel);
+  // Tick positions stay at every decade; labels appear only at every Nth position.
+  // (Empty ticktext at a position keeps the tick mark but hides the label.)
+  const text = vals.map((v, i) => (i % step === 0) ? labelFn(v) : '');
+  return { tickvals: vals, ticktext: text };
+}
+
+// ============================================================================
+// SECTION 7: Smoothing — monotonic cubic interpolation (PCHIP / Fritsch-Carlson)
+//   Used when a series has shape = "monotonic": densifies the curve through
+//   the guide points without ever overshooting them, unlike a plain spline.
+//   Plotly has built-in "spline" smoothing but no monotonic option, so we
+//   compute the densified points ourselves and feed them as a regular line.
+// ============================================================================
+
+// PCHIP (monotonic cubic Hermite) — returns slopes d[i] at each input point.
+// Algorithm: Fritsch-Carlson 1980. Guarantees no overshoot between data points.
+function pchipSlopes(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return ys.map(() => 0);
+  const h = new Array(n - 1), m = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    h[i] = xs[i + 1] - xs[i];
+    m[i] = (ys[i + 1] - ys[i]) / h[i];
+  }
+  const d = new Array(n);
+  d[0] = m[0];
+  d[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i - 1] * m[i] <= 0) {
+      d[i] = 0;
+    } else {
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      d[i] = (w1 + w2) / (w1 / m[i - 1] + w2 / m[i]);
+    }
+  }
+  return d;
+}
+
+// Densify a series for monotonic-cubic plotting. Splits each interval into `steps` pieces.
+// Operates in transformed-x space if xIsLog (so smoothing looks right on log axes).
+function pchipDensify(xRaw, yRaw, xIsLog, steps = 24) {
+  // Drop null/non-finite pairs (and non-positive x on log axes)
+  const pairs = [];
+  for (let i = 0; i < xRaw.length; i++) {
+    const x = xRaw[i], y = yRaw[i];
+    if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (xIsLog && x <= 0) continue;
+    pairs.push([xIsLog ? Math.log10(x) : x, y]);
+  }
+  if (pairs.length < 2) return { x: [], y: [] };
+  pairs.sort((a, b) => a[0] - b[0]);
+  const xs = pairs.map(p => p[0]), ys = pairs.map(p => p[1]);
+  const d = pchipSlopes(xs, ys);
+  const outX = [], outY = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    const h = xs[i + 1] - xs[i];
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      // Cubic Hermite basis
+      const h00 = (1 + 2 * t) * (1 - t) * (1 - t);
+      const h10 = t * (1 - t) * (1 - t);
+      const h01 = t * t * (3 - 2 * t);
+      const h11 = t * t * (t - 1);
+      const xt = xs[i] + h * t;
+      const yt = h00 * ys[i] + h10 * h * d[i] + h01 * ys[i + 1] + h11 * h * d[i + 1];
+      outX.push(xIsLog ? Math.pow(10, xt) : xt);
+      outY.push(yt);
+    }
+  }
+  outX.push(xIsLog ? Math.pow(10, xs[xs.length - 1]) : xs[xs.length - 1]);
+  outY.push(ys[ys.length - 1]);
+  return { x: outX, y: outY };
+}
+
+// ============================================================================
+// SECTION 8: Plot building & rendering
+//   - LEGEND_PRESETS / legendOverride: where the legend sits
+//   - hexToRgba: helper for translucent error-band fill
+//   - buildFigure: the core — turns `dataset` + `seriesStyles` into a Plotly
+//                  figure object `{ traces, layout }`. forExport: true skips
+//                  the shadow markers so downloads stay clean.
+//   - renderPlot: hands the figure to Plotly.react()
+//   - attachDragHandlers: legend-drag + data-point-drag mouse handlers
+// ============================================================================
+
+const LEGEND_PRESETS = {
+  tr:        { x: 0.99, y: 0.99, xanchor: 'right', yanchor: 'top' },
+  tl:        { x: 0.01, y: 0.99, xanchor: 'left',  yanchor: 'top' },
+  br:        { x: 0.99, y: 0.01, xanchor: 'right', yanchor: 'bottom' },
+  bl:        { x: 0.01, y: 0.01, xanchor: 'left',  yanchor: 'bottom' },
+  'outside-r': { x: 1.02, y: 1,    xanchor: 'left',  yanchor: 'top' }
+};
+// User-overridden legend position (from mouse drag). null = use preset.
+let legendOverride = null;
+// User-overridden right margin (from manual input OR drag-the-boundary). null = auto.
+let userRightMargin = null;
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substr(0, 2), 16);
+  const g = parseInt(h.substr(2, 2), 16);
+  const b = parseInt(h.substr(4, 2), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Build an axis range when the user may have set only one bound.
+// Returns the range array (in axis-native units; log10 for log axes) or null.
+// For an unspecified side, falls back to the data extent (+5% pad linear,
+// /1.2 or ×1.2 log). Disables autorange — caller should set yAxis.autorange = false.
+function computeAxisRange(userMin, userMax, isLog, dataMin, dataMax) {
+  const minOK = Number.isFinite(userMin) && (!isLog || userMin > 0);
+  const maxOK = Number.isFinite(userMax) && (!isLog || userMax > 0);
+  if (!minOK && !maxOK) return null;       // both blank → let Plotly autorange
+  let lo = minOK ? userMin : null;
+  let hi = maxOK ? userMax : null;
+  if (lo === null || hi === null) {
+    if (dataMin == null || dataMax == null) {
+      // No usable data — invent something sensible
+      if (lo === null) lo = isLog ? 0.001 : 0;
+      if (hi === null) hi = isLog ? 10 : 1;
+    } else if (isLog) {
+      if (lo === null) lo = dataMin / 1.2;
+      if (hi === null) hi = dataMax * 1.2;
+    } else {
+      const span = (dataMax - dataMin) || Math.abs(dataMax) || 1;
+      if (lo === null) lo = dataMin - span * 0.05;
+      if (hi === null) hi = dataMax + span * 0.05;
+    }
+  }
+  if (isLog && lo <= 0) lo = 1e-12;        // last-resort safety
+  return [isLog ? Math.log10(lo) : lo, isLog ? Math.log10(hi) : hi];
+}
+
+function buildFigure({ forExport = false } = {}) {
+  const xScale = document.getElementById('x-scale').value;
+  const yScale = document.getElementById('y-scale').value;
+  const tickStyle = document.getElementById('x-tick-style').value;
+  const xTitle = document.getElementById('x-title').value || dataset.xName;
+  const yTitle = document.getElementById('y-title').value;
+  const yMin = document.getElementById('y-min').value;
+  const yMax = document.getElementById('y-max').value;
+  const showGrid = document.getElementById('show-grid').value === 'yes';
+  const showLegend = document.getElementById('show-legend').value === 'yes';
+  const editMode = !forExport && document.getElementById('edit-points').checked;
+
+  // Global text style (also used by xAxis/yAxis title font.size overrides below).
+  const textSize = Math.max(6, Math.min(72, +document.getElementById('text-size').value || 14));
+  const fontFamily = document.getElementById('font-family').value || 'Arial, sans-serif';
+  const readSizeOverride = (id) => {
+    const raw = document.getElementById(id).value.trim();
+    return (raw !== '' && Number.isFinite(+raw)) ? Math.max(6, Math.min(72, +raw)) : null;
+  };
+  const xTitleSize = readSizeOverride('x-title-size') ?? textSize;
+  const yTitleSize = readSizeOverride('y-title-size') ?? textSize;
+  const legendTextSize = readSizeOverride('legend-text-size') ?? textSize;
+
+  // Plotly delegates LaTeX rendering to MathJax. MathJax IGNORES Plotly's
+  // title.font.size and the HTML container's font-size. The reliable way to
+  // resize math is to insert a LaTeX size command INSIDE the $...$ block.
+  // MathJax 2 core supports the discrete sizing commands below (\tiny through
+  // \Huge). \scalebox is NOT in core (it's part of graphicx, not loaded by our
+  // config) and \style needs the HTML extension — neither is loaded by default,
+  // so we use the always-available discrete commands. ~10 steps spanning 0.5×–2.5×.
+  // Only \small / \large / \Large / \LARGE / \huge / \Huge are reliably recognized
+  // by MathJax 2's default config. \footnotesize / \scriptsize / \tiny render as
+  // literal text in some setups, so we collapse the small end onto \small.
+  const wrapLatexTitle = (text, size, baseSize) => {
+    if (!text || !text.includes('$')) return text;
+    if (size === baseSize) return text;
+    const ratio = size / baseSize;
+    let cmd;
+    if      (ratio < 0.90) cmd = '\\small';
+    else if (ratio < 1.10) cmd = '';                // \normalsize (no command)
+    else if (ratio < 1.30) cmd = '\\large';
+    else if (ratio < 1.55) cmd = '\\Large';
+    else if (ratio < 1.85) cmd = '\\LARGE';
+    else if (ratio < 2.20) cmd = '\\huge';
+    else                   cmd = '\\Huge';
+    if (!cmd) return text;
+    return text.replace(/\$([^$]+)\$/g, (_m, inner) => `$${cmd} ${inner}$`);
+  };
+  const xTitleText = wrapLatexTitle(xTitle, xTitleSize, textSize);
+  const yTitleText = wrapLatexTitle(yTitle, yTitleSize, textSize);
+
+  // For log-x with possible zero/negative, filter out non-positive X values
+  const xFiltered = dataset.xValues.map(v => (xScale === 'log' && v <= 0) ? null : v);
+
+  const traces = [];
+  dataset.series.forEach((s, i) => {
+    if (s.role && s.role !== 'data') return;     // error columns are tagged to a data series, not rendered as their own trace
+    const st = seriesStyles[i];
+    if (!st.visible) return;
+    const drawMarker = st.marker !== 'none';
+    const isOpen = drawMarker && st.marker.endsWith('-open');
+    const shape = st.shape || 'linear';
+    const drawLine = st.dash !== 'none';
+    const groupId = 'series-' + i;
+    // Marker size and line width are per-series. Old projects (pre-this-change) may
+    // not have them on seriesStyles; deserializeProject backfills from the saved
+    // globals, so this fallback is just final safety.
+    const markerSize = +st.markerSize || 10;
+    const lineWidth = +st.lineWidth || 2;
+    // Guide curve fits the SHADOW (guide) points. Falls back to data values if guideValues missing.
+    const guideY = s.guideValues || s.values;
+
+    // Resolve error arrays (if any). Both pointers are series indices into dataset.series.
+    let errPlusArr = null, errMinusArr = null, hasErrors = false, symmetric = true;
+    if (st.errorStyle && st.errorStyle !== 'none' && s.errPlus != null) {
+      const plusSeries = dataset.series[s.errPlus];
+      const minusSeries = s.errMinus != null ? dataset.series[s.errMinus] : plusSeries;
+      if (plusSeries && minusSeries) {
+        errPlusArr = plusSeries.values;
+        errMinusArr = minusSeries.values;
+        symmetric = (s.errMinus == null) || (s.errMinus === s.errPlus);
+        hasErrors = true;
+      }
+    }
+
+    const markerSpec = isOpen
+      ? { symbol: st.marker, size: markerSize, color: st.color, line: { width: 1.8, color: st.color } }
+      : { symbol: st.marker, size: markerSize, color: st.color, line: { width: 0.5, color: st.color } };
+
+    // === Phantom legend trace ===
+    // Carries only the legend swatch; renders nothing on the plot. Combines marker + dash
+    // exactly as best practice for journal figures recommends.
+    const lstyle = st.legendStyle || 'both';
+    const wantLine = drawLine && (lstyle === 'both' || lstyle === 'line');
+    const wantMarker = drawMarker && (lstyle === 'both' || lstyle === 'marker');
+    // With nothing to show (marker AND line both "none"), fall back to a lines
+    // entry whose width is forced to 0 below — i.e. a text-only legend swatch,
+    // rather than Plotly's misleading default marker.
+    const legendMode = wantMarker ? (wantLine ? 'lines+markers' : 'markers') : 'lines';
+    const hasName = !!(s.name && String(s.name).trim());
+    // Scale LaTeX in legend names the same way as axis titles — discrete sizing commands
+    // inside the $...$ block (MathJax doesn't honor surrounding font.size for legend entries).
+    const legendName = wrapLatexTitle(s.name, legendTextSize, textSize);
+    // Build the phantom trace by OMITTING line/marker when unwanted rather than
+    // setting them to `undefined`. An explicit `undefined` here both (a) crashes
+    // Plotly's cleanData on a fresh plot ("'in' operator … in undefined") and
+    // (b) confuses Plotly.react's diff so a "line only"/"marker only" swatch keeps
+    // the previously-drawn symbol. Omitting the key entirely avoids both.
+    // Legend order is DECOUPLED from draw order via Plotly's `legendrank` (lower =
+    // higher in the legend). A per-series "Legend #" overrides it; series left
+    // blank fall below the numbered ones, keeping their draw order amongst
+    // themselves (rank 1000 + draw index, matching Plotly's 1000 default).
+    const lrRaw = st.legendRank;
+    const legendRank = (lrRaw !== '' && lrRaw != null && Number.isFinite(+lrRaw)) ? +lrRaw : (1000 + i);
+    const phantom = {
+      x: [null], y: [null],
+      name: legendName,
+      type: 'scatter',
+      mode: legendMode,
+      showlegend: hasName,    // empty name → hidden from legend, plot data still drawn
+      legendgroup: groupId,
+      legendrank: legendRank,
+      hoverinfo: 'skip'
+    };
+    if (wantLine) phantom.line = { color: st.color, dash: st.dash, width: lineWidth };
+    else if (!wantMarker) phantom.line = { color: st.color, width: 0 };  // text-only swatch
+    if (wantMarker) phantom.marker = markerSpec;
+    traces.push(phantom);
+
+    // === Error band (drawn first so the curve sits on top) ===
+    if (hasErrors && st.errorStyle === 'band') {
+      const yUpper = s.values.map((v, k) => (v == null || errPlusArr[k] == null) ? null : v + errPlusArr[k]);
+      const yLower = s.values.map((v, k) => (v == null || errMinusArr[k] == null) ? null : v - errMinusArr[k]);
+      const fillColor = hexToRgba(st.color, 0.18);
+      traces.push({
+        x: xFiltered, y: yUpper,
+        mode: 'lines', type: 'scatter',
+        line: { width: 0, color: st.color },
+        showlegend: false, hoverinfo: 'skip', legendgroup: groupId
+      });
+      traces.push({
+        x: xFiltered, y: yLower,
+        mode: 'lines', type: 'scatter',
+        line: { width: 0, color: st.color },
+        fill: 'tonexty', fillcolor: fillColor,
+        showlegend: false, hoverinfo: 'skip', legendgroup: groupId
+      });
+    }
+
+    // === Guide curve through shadow points ===
+    if (drawLine) {
+      if (shape === 'monotonic') {
+        const dense = pchipDensify(xFiltered, guideY, xScale === 'log');
+        traces.push({
+          x: dense.x, y: dense.y,
+          name: s.name,
+          mode: 'lines',
+          type: 'scatter',
+          hoverinfo: 'skip',
+          showlegend: false,
+          legendgroup: groupId,
+          line: { color: st.color, dash: st.dash, width: lineWidth, shape: 'spline', smoothing: 0 }
+        });
+      } else {
+        traces.push({
+          x: xFiltered, y: guideY,
+          name: s.name,
+          mode: 'lines',
+          type: 'scatter',
+          hoverinfo: 'skip',
+          showlegend: false,
+          legendgroup: groupId,
+          connectgaps: false,
+          line: {
+            color: st.color, dash: st.dash, width: lineWidth,
+            shape: shape === 'spline' ? 'spline' : 'linear',
+            smoothing: shape === 'spline' ? 1.0 : 0
+          }
+        });
+      }
+    }
+
+    // === Data markers (original values; never modified by drag) ===
+    // This is also the trace that carries `error_y` when the style is 'bars'.
+    // When the marker is "none" we still emit this trace (with invisible markers)
+    // if T-bar errors are needed, so the error bars have something to attach to;
+    // otherwise it's skipped entirely.
+    const wantErrorBars = hasErrors && st.errorStyle === 'bars';
+    if (drawMarker || wantErrorBars) {
+      const markerTrace = {
+        x: xFiltered, y: s.values,
+        name: s.name,
+        mode: 'markers',
+        type: 'scatter',
+        showlegend: false,        // legend swatch comes from the phantom trace above
+        legendgroup: groupId,
+        marker: drawMarker ? markerSpec : { size: 0.1, color: st.color, opacity: 0 },
+        hoverinfo: drawMarker ? undefined : 'skip'
+      };
+      if (wantErrorBars) {
+        markerTrace.error_y = {
+          type: 'data',
+          array: errPlusArr,
+          arrayminus: symmetric ? undefined : errMinusArr,
+          symmetric: symmetric,
+          visible: true,
+          color: st.color,
+          thickness: 1.3,
+          width: +st.errorCapSize >= 0 ? +st.errorCapSize : 6   // dedicated cap-width control
+        };
+      }
+      traces.push(markerTrace);
+    }
+
+    // === Shadow control points (drag handles for the guide curve) ===
+    // Translucent halo rings around each guide point. Visible in the UI when
+    // edit mode is on, omitted entirely in PNG/SVG export (forExport: true).
+    if (editMode) {
+      traces.push({
+        x: xFiltered, y: guideY,
+        name: s.name + ' (guide)',
+        mode: 'markers',
+        type: 'scatter',
+        showlegend: false,
+        hoverinfo: 'skip',
+        marker: {
+          symbol: 'circle-open',
+          size: markerSize + 6,
+          color: st.color,
+          opacity: 0.55,
+          line: { width: 1.5, color: st.color }
+        }
+      });
+    }
+  });
+
+  const frameStyle = document.getElementById('frame-style').value;
+  const mirror = frameStyle.startsWith('box');
+  const ticksDir = frameStyle.endsWith('-in') ? 'inside' : 'outside';
+
+  const xAxis = {
+    title: { text: xTitleText, font: { family: fontFamily, size: xTitleSize } },
+    type: xScale,
+    showgrid: showGrid,
+    gridcolor: '#e6e8eb',
+    zeroline: false,
+    automargin: true,
+    showline: true,
+    linecolor: 'black',
+    linewidth: 1,
+    mirror: mirror,
+    ticks: ticksDir,
+    tickcolor: 'black',
+    ticklen: 6,
+    tickwidth: 1
+  };
+
+  const xMinRaw = document.getElementById('x-min').value;
+  const xMaxRaw = document.getElementById('x-max').value;
+  const xMinNum = xMinRaw === '' ? null : Number(xMinRaw);
+  const xMaxNum = xMaxRaw === '' ? null : Number(xMaxRaw);
+
+  const xIsLog = xScale === 'log';
+  const xPositives = dataset.xValues.filter(v => v != null && Number.isFinite(v) && (!xIsLog || v > 0));
+  const xDataMin = xPositives.length ? Math.min(...xPositives) : null;
+  const xDataMax = xPositives.length ? Math.max(...xPositives) : null;
+
+  if (xIsLog) {
+    // Tick generation uses user bounds when given (regardless of whether both are set)
+    const tickMin = Number.isFinite(xMinNum) && xMinNum > 0 ? xMinNum : (xDataMin ?? 1);
+    const tickMax = Number.isFinite(xMaxNum) && xMaxNum > 0 ? xMaxNum : (xDataMax ?? 10);
+    const xStep = +document.getElementById('x-label-step').value || 1;
+    const ticks = makeLogTicks(tickMin, tickMax, tickStyle, xStep);
+    xAxis.tickvals = ticks.tickvals;
+    xAxis.ticktext = ticks.ticktext;
+    xAxis.tickmode = 'array';
+  } else if (tickStyle !== 'power') {
+    xAxis.tickformat = tickStyle === 'sci' ? '.0e' : '';
+  }
+
+  // Range: supports just-min, just-max, or both. Falls back to data extent for the unset side.
+  const xRange = computeAxisRange(xMinNum, xMaxNum, xIsLog, xDataMin, xDataMax);
+  if (xRange) { xAxis.range = xRange; xAxis.autorange = false; }
+
+  const yAxis = {
+    title: { text: yTitleText, font: { family: fontFamily, size: yTitleSize } },
+    type: yScale,
+    showgrid: showGrid,
+    gridcolor: '#e6e8eb',
+    zeroline: false,
+    automargin: true,
+    showline: true,
+    linecolor: 'black',
+    linewidth: 1,
+    mirror: mirror,
+    ticks: ticksDir,
+    tickcolor: 'black',
+    ticklen: 6,
+    tickwidth: 1
+  };
+  // Y range: like X, supports just-min / just-max / both. Falls back to the
+  // data extent (including error-bar reach) for the unset side.
+  const yMinNum = yMin === '' ? null : Number(yMin);
+  const yMaxNum = yMax === '' ? null : Number(yMax);
+  const yIsLog = yScale === 'log';
+  let yLo = Infinity, yHi = -Infinity;
+  dataset.series.forEach((s, i) => {
+    if (s.role && s.role !== 'data') return;
+    if (!seriesStyles[i].visible) return;
+    const ep = (s.errPlus != null && dataset.series[s.errPlus]) ? dataset.series[s.errPlus].values : null;
+    const em = (s.errMinus != null && dataset.series[s.errMinus]) ? dataset.series[s.errMinus].values : ep;
+    s.values.forEach((y, k) => {
+      if (y == null || !Number.isFinite(y)) return;
+      if (yIsLog && y <= 0) return;
+      const lo = (em && em[k] != null && Number.isFinite(em[k])) ? y - em[k] : y;
+      const hi = (ep && ep[k] != null && Number.isFinite(ep[k])) ? y + ep[k] : y;
+      // For log axes, ignore error reaches that go non-positive
+      const useLo = (yIsLog && lo <= 0) ? y : lo;
+      if (useLo < yLo) yLo = useLo;
+      if (hi > yHi) yHi = hi;
+    });
+  });
+  const yDataMin = yLo === Infinity ? null : yLo;
+  const yDataMax = yHi === -Infinity ? null : yHi;
+  const yRange = computeAxisRange(yMinNum, yMaxNum, yIsLog, yDataMin, yDataMax);
+  if (yRange) { yAxis.range = yRange; yAxis.autorange = false; }
+
+  // Y tick labels — same approach as X. On a log axis, explicit one-per-decade
+  // tickvals suppress Plotly's minor ticks; user picks the label format.
+  if (yIsLog) {
+    const yTickStyle = document.getElementById('y-tick-style').value;
+    const yStep = +document.getElementById('y-label-step').value || 1;
+    const tickMin = Number.isFinite(yMinNum) && yMinNum > 0 ? yMinNum : (yDataMin ?? 0.001);
+    const tickMax = Number.isFinite(yMaxNum) && yMaxNum > 0 ? yMaxNum : (yDataMax ?? 10);
+    const yTicks = makeLogTicks(tickMin, tickMax, yTickStyle, yStep);
+    yAxis.tickvals = yTicks.tickvals;
+    yAxis.ticktext = yTicks.ticktext;
+    yAxis.tickmode = 'array';
+  } else {
+    const yTickStyle = document.getElementById('y-tick-style').value;
+    if (yTickStyle === 'sci') yAxis.tickformat = '.0e';
+  }
+
+  const plotTitle = document.getElementById('plot-title').value;
+  const legendPos = document.getElementById('legend-pos').value;
+  const legendBase = legendOverride || LEGEND_PRESETS[legendPos] || LEGEND_PRESETS.tr;
+
+  // Right margin: precedence is (manual input) > (auto-compute) > 20.
+  // Auto-compute runs only when the legend sits outside the plot area
+  // (either via the "outside-r" preset OR a user-dragged legend past x = 1).
+  const legendOutside = (legendPos === 'outside-r' && !legendOverride)
+                     || (legendOverride && legendOverride.x > 1);
+  let rightMargin = 20;
+  if (userRightMargin !== null) {
+    rightMargin = userRightMargin;
+  } else if (legendOutside) {
+    // Estimate per-char ≈ 0.75 × font size, plus swatch (~28 px) and padding (~36 px).
+    // Floor 160 keeps a comfortable minimum; ceiling 600 caps runaway names.
+    let maxNameLen = 0;
+    dataset.series.forEach((s, i) => {
+      if (s.role && s.role !== 'data') return;
+      if (!seriesStyles[i].visible) return;
+      const name = String(s.name || '').trim();
+      if (!name) return;
+      if (name.length > maxNameLen) maxNameLen = name.length;
+    });
+    const estimate = Math.ceil(maxNameLen * textSize * 0.75 + 64);
+    rightMargin = Math.max(160, Math.min(600, estimate));
+  }
+
+  const layout = {
+    title: plotTitle ? { text: plotTitle, font: { size: textSize + 2 } } : undefined,
+    xaxis: xAxis,
+    yaxis: yAxis,
+    showlegend: showLegend,
+    // Explicitly set legend.font so Plotly re-lays-out the legend box when text size changes.
+    // (Inheriting from layout.font works but doesn't always trigger a re-layout on Plotly.react diffs.)
+    // legend.font.size can be overridden independently of the global Text size via Legend text size.
+    // The legend box width is auto-fit post-render by fitLegendBox — no entrywidth override needed.
+    legend: {
+      ...legendBase,
+      font: { family: fontFamily, size: legendTextSize },
+      bgcolor: 'rgba(255,255,255,0.85)', bordercolor: '#d8dce3', borderwidth: 1
+    },
+    margin: { l: 70, r: rightMargin, t: plotTitle ? (textSize + 2) * 2 + 14 : 20, b: 60 },
+    plot_bgcolor: 'white',
+    paper_bgcolor: 'white',
+    font: { family: fontFamily, size: textSize }
+  };
+
+  return { traces, layout };
+}
+
+// Size the on-screen plot to match the W × H aspect ratio from Plot style options,
+// scaled to fit the available .plot-wrap area. Exported PNG/SVG use the literal
+// W × H values; this just ensures the screen preview has the same proportions.
+function applyPlotAspect() {
+  const wrap = document.querySelector('.plot-wrap');
+  const plot = document.getElementById('plot');
+  if (!wrap || !plot) return;
+  const w = +document.getElementById('plot-w').value || 700;
+  const h = +document.getElementById('plot-h').value || 500;
+  const aspect = w / h;
+  // plot-wrap has 8 px padding on each side; subtract from available space.
+  const availW = Math.max(50, wrap.clientWidth  - 16);
+  const availH = Math.max(50, wrap.clientHeight - 16);
+  let pw = availW, ph = pw / aspect;
+  if (ph > availH) { ph = availH; pw = ph * aspect; }
+  plot.style.width  = Math.floor(pw) + 'px';
+  plot.style.height = Math.floor(ph) + 'px';
+}
+
+// Plotly's gd.on(...) handlers are wiped whenever the plot is fully rebuilt
+// (e.g. the text-size hard-refresh path purges first), so re-bind on every
+// render. removeAllListeners first keeps an incremental react render from
+// stacking duplicate handlers.
+function bindPlotlyRelayout(gd) {
+  if (gd.removeAllListeners) gd.removeAllListeners('plotly_relayout');
+  gd.on('plotly_relayout', () => { fitLegendBox(gd); scheduleAutoSave(); });
+}
+
+function renderPlot() {
+  if (!dataset) {
+    Plotly.purge('plot');
+    return;
+  }
+  applyPlotAspect();
+  const { traces, layout } = buildFigure();
+  Plotly.react('plot', traces, layout, { responsive: true, displaylogo: false }).then(gd => {
+    bindPlotlyRelayout(gd);
+    attachDragHandlers(gd);
+    fitLegendBox(gd);
+  });
+  scheduleAutoSave();
+}
+
+// Plotly's `legend.entrywidth` is silently ignored when legend entries contain
+// MathJax-rendered LaTeX, so the legend box stays at the (often-too-narrow) width
+// AND height that Plotly estimated from the LaTeX *source* string. We work around
+// that by directly resizing the legend's background rectangle AND its clipPath
+// rect in the rendered SVG so they match the actual content bounds on ALL FOUR
+// SIDES. The legend group is then shifted to keep the user's anchored edge fixed.
+//
+// Works on either the live plot div (gd._fullLayout gives xanchor/yanchor) or a
+// detached SVG sub-tree (anchors are inferred from the legend's position relative
+// to SVG width).
+function fitLegendBox(root, knownXanchor) {
+  if (!root) return;
+  const legendGroup = root.querySelector('g.legend');
+  if (!legendGroup) return;
+  const bgRect = legendGroup.querySelector('rect.bg');
+  if (!bgRect) return;
+  const traces = legendGroup.querySelectorAll('g.traces');
+  if (!traces.length) return;
+
+  // Plotly sometimes splits legend entries across multiple <g class="groups">
+  // siblings, each with its own translate(...) — when traces have different
+  // `legendgroup` values, the groups are stacked with a y offset between them.
+  // Our measurement & re-spacing logic reads only the trace's own transform, so
+  // a nested parent translate gets ignored and that trace lands at the wrong y
+  // (ends up clipped by the legend's clipPath). Flatten those parent transforms
+  // onto each trace's own transform so all positions are in a single coord space.
+  legendGroup.querySelectorAll('g.groups').forEach(g => {
+    const gT = (g.getAttribute('transform') || '').match(/translate\(([^,]+),\s*([^)]+)\)/);
+    if (!gT) return;
+    const gx = parseFloat(gT[1]) || 0, gy = parseFloat(gT[2]) || 0;
+    if (gx === 0 && gy === 0) return;
+    g.querySelectorAll(':scope > g.traces').forEach(t => {
+      const tT = (t.getAttribute('transform') || '').match(/translate\(([^,]+),\s*([^)]+)\)/);
+      const tx = tT ? parseFloat(tT[1]) : 0;
+      const ty = tT ? parseFloat(tT[2]) : 0;
+      t.setAttribute('transform', `translate(${tx + gx}, ${ty + gy})`);
+    });
+    g.setAttribute('transform', '');   // clear the parent offset now that it's flattened
+  });
+
+  // Phase 1 — Collect each trace's local geometry (transform y + bbox).
+  // We need this to detect / fix row overlap before we measure overall extents.
+  // Crucially, NEVER drop a trace from the list — if getBBox fails on one, we still
+  // want to re-position it so it doesn't end up alone at its original spacing while
+  // the others get moved.
+  const traceData = [];
+  traces.forEach(t => {
+    const trM = (t.getAttribute('transform') || '').match(/translate\(([^,]+),\s*([^)]+)\)/);
+    const tx = trM ? parseFloat(trM[1]) : 0;
+    const ty = trM ? parseFloat(trM[2]) : 0;
+    let bb = { x: 0, y: 0, width: 0, height: 0 };
+    try { bb = t.getBBox(); } catch (_) { /* keep the zero-sized fallback */ }
+    traceData.push({ el: t, tx, ty, bb });
+  });
+  if (!traceData.length) return;
+  traceData.sort((a, b) => a.ty - b.ty);
+
+  // Phase 2 — Re-space rows if math content height exceeds Plotly's pre-computed
+  // spacing. This happens whenever we set a CSS font-size override that's larger
+  // than what Plotly used internally — math renders taller and would overlap the
+  // next row without re-spacing.
+  if (traceData.length > 1) {
+    const curSpacing = traceData[1].ty - traceData[0].ty;
+    const maxBboxH = Math.max(...traceData.map(d => d.bb.height));
+    const reqSpacing = Math.ceil(maxBboxH + 4);     // 4 px breathing room between rows
+    if (reqSpacing > curSpacing + 1) {
+      const startY = traceData[0].ty;
+      traceData.forEach((d, i) => {
+        const newY = startY + i * reqSpacing;
+        d.el.setAttribute('transform', `translate(${d.tx}, ${newY})`);
+        d.ty = newY;
+      });
+    }
+  }
+
+  // Phase 3 — Measure full content extents with the possibly-updated positions.
+  let minL = Infinity, maxR = -Infinity, minT = Infinity, maxB = -Infinity;
+  traceData.forEach(d => {
+    const l = d.tx + d.bb.x, r = l + d.bb.width;
+    const top0 = d.ty + d.bb.y, bot = top0 + d.bb.height;
+    if (l    < minL) minL = l;
+    if (r    > maxR) maxR = r;
+    if (top0 < minT) minT = top0;
+    if (bot  > maxB) maxB = bot;
+  });
+  if (maxR === -Infinity) return;
+
+  const padX = 12, padY = 6;
+  const curX = parseFloat(bgRect.getAttribute('x')) || 0;
+  const curY = parseFloat(bgRect.getAttribute('y')) || 0;
+  const curW = parseFloat(bgRect.getAttribute('width')) || 0;
+  const curH = parseFloat(bgRect.getAttribute('height')) || 0;
+  const curR = curX + curW, curB = curY + curH;
+
+  // Outer bounds for the new rect — expand outward only, never shrink (avoids flicker
+  // and prevents the box from getting smaller than what Plotly already drew).
+  const newX = Math.min(curX, Math.floor(minL - padX));
+  const newY = Math.min(curY, Math.floor(minT - padY));
+  const newR = Math.max(curR, Math.ceil(maxR + padX));
+  const newB = Math.max(curB, Math.ceil(maxB + padY));
+  const newW = newR - newX, newH = newB - newY;
+
+  const dxLeft   = curX - newX;   // amount extended LEFT (≥ 0)
+  const dxRight  = newR - curR;   // amount extended RIGHT (≥ 0)
+  const dyTop    = curY - newY;   // amount extended UP (≥ 0)
+  const dyBottom = newB - curB;   // amount extended DOWN (≥ 0)
+  if (dxLeft < 1 && dxRight < 1 && dyTop < 1 && dyBottom < 1) return;
+
+  // Update bg rect, click-target rect, and the clipPath (with 1 px inner inset).
+  const setRect = (el, x, y, w, h) => {
+    el.setAttribute('x', x); el.setAttribute('y', y);
+    el.setAttribute('width', w); el.setAttribute('height', h);
+  };
+  setRect(bgRect, newX, newY, newW, newH);
+  const toggleRect = legendGroup.querySelector('rect.legendtoggle');
+  if (toggleRect) setRect(toggleRect, newX, newY, newW, newH);
+  const scrollbox = legendGroup.querySelector('g.scrollbox');
+  if (scrollbox) {
+    const cp = (scrollbox.getAttribute('clip-path') || '').match(/url\(#([^)]+)\)/);
+    if (cp && cp[1]) {
+      const safeId = (window.CSS && CSS.escape) ? CSS.escape(cp[1]) : cp[1];
+      const clipRect = root.querySelector('#' + safeId + ' rect');
+      if (clipRect) setRect(clipRect, newX + 1, newY + 1, Math.max(1, newW - 2), Math.max(1, newH - 2));
+    }
+  }
+
+  // Determine x/y anchors. Priority: explicit arg > gd._fullLayout > geometry heuristic.
+  let xanchor = knownXanchor;
+  let yanchor;
+  if (root._fullLayout && root._fullLayout.legend) {
+    xanchor = xanchor || root._fullLayout.legend.xanchor;
+    yanchor = root._fullLayout.legend.yanchor;
+  }
+  if (!xanchor) {
+    const svgEl = root.querySelector('svg.main-svg, svg');
+    const svgW = svgEl
+      ? (+svgEl.getAttribute('width') || (svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width) || 0)
+      : 0;
+    const tm = (legendGroup.getAttribute('transform') || '').match(/translate\(([^,]+),\s*([^)]+)\)/);
+    if (tm && svgW > 0) {
+      const tx = parseFloat(tm[1]);
+      xanchor = (tx + curW > svgW * 0.5) ? 'right' : 'left';
+    }
+  }
+  if (!yanchor) yanchor = 'top';   // safe default — inside-tr is the typical case
+
+  // Shift the legend group so the anchored corner stays put.
+  //   - right-anchor: bg right edge moved by dxRight → shift left by dxRight
+  //   - left-anchor:  bg left  edge moved by dxLeft  → shift right by dxLeft
+  //   - top-anchor:   bg top    edge moved up by dyTop → shift down by dyTop
+  //   - bottom-anchor:bg bottom edge moved down by dyBottom → shift up by dyBottom
+  const tr = legendGroup.getAttribute('transform') || '';
+  const m  = tr.match(/translate\(([^,]+),\s*([^)]+)\)/);
+  if (m) {
+    let tx = parseFloat(m[1]), ty = parseFloat(m[2]);
+    if      (xanchor === 'right')  tx -= dxRight;
+    else if (xanchor === 'center') tx -= (dxRight - dxLeft) / 2;
+    else                            tx += dxLeft;            // 'left'
+    if      (yanchor === 'bottom') ty -= dyBottom;
+    else if (yanchor === 'middle') ty -= (dyBottom - dyTop) / 2;
+    else                            ty += dyTop;             // 'top'
+    legendGroup.setAttribute('transform', `translate(${tx}, ${ty})`);
+  }
+}
+
+// One-time binding of mouse handlers. Handlers read live state (dataset, edit-mode checkbox,
+// current axes) on every event, so they survive replots without rebinding.
+let dragHandlersBound = false;
+function attachDragHandlers(gd) {
+  if (dragHandlersBound) return;
+  dragHandlersBound = true;
+
+  // NOTE: the plotly_relayout handler (re-fit the legend box + auto-save after
+  // every layout change, including legend drag) is bound per-render in
+  // bindPlotlyRelayout, because a full redraw wipes gd's Plotly event handlers.
+  // The DOM mousedown/mousemove handlers below live on the persistent #plot div,
+  // so they are bound exactly once.
+
+  const plotDiv = document.getElementById('plot');
+
+  plotDiv.addEventListener('mousedown', (e) => {
+    if (!dataset) return;
+    const onLegend = !!e.target.closest('.legend');
+
+    // === Legend drag ===
+    if (onLegend) {
+      e.preventDefault();
+      e.stopPropagation();
+      const layout = gd._fullLayout;
+      const pa = layout._size; // { l, r, t, b, w, h }
+      const startX = e.clientX, startY = e.clientY;
+      const startLegX = layout.legend.x, startLegY = layout.legend.y;
+      const xanchor = layout.legend.xanchor, yanchor = layout.legend.yanchor;
+      function onMove(ev) {
+        const dx = ev.clientX - startX, dy = ev.clientY - startY;
+        const nx = Math.max(-0.05, Math.min(1.25, startLegX + dx / pa.w));
+        const ny = Math.max(-0.05, Math.min(1.10, startLegY - dy / pa.h));
+        legendOverride = { x: nx, y: ny, xanchor, yanchor };
+        Plotly.relayout(plotDiv, { 'legend.x': nx, 'legend.y': ny });
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      return;
+    }
+
+    // === Data-point drag (only when edit mode is on) ===
+    if (!document.getElementById('edit-points').checked) return;
+    const layout = gd._fullLayout;
+    const xa = layout.xaxis, ya = layout.yaxis;
+    const pa = layout._size;
+    const rect = plotDiv.getBoundingClientRect();
+    const plotLeft = rect.left + pa.l, plotTop = rect.top + pa.t;
+    const px = e.clientX - plotLeft, py = e.clientY - plotTop;
+
+    // Find nearest visible SHADOW point within tolerance (guide marker, not data marker)
+    const tol = 18;
+    let best = null;
+    dataset.series.forEach((s, si) => {
+      if (!seriesStyles[si].visible) return;
+      const guideY = s.guideValues || s.values;
+      for (let pi = 0; pi < dataset.xValues.length; pi++) {
+        const xv = dataset.xValues[pi], yv = guideY[pi];
+        if (xv == null || yv == null || !Number.isFinite(yv)) continue;
+        if (xa.type === 'log' && xv <= 0) continue;
+        if (ya.type === 'log' && yv <= 0) continue;
+        const px2 = xa.d2p(xv), py2 = ya.d2p(yv);
+        if (px2 == null || py2 == null) return;
+        const d = Math.hypot(px2 - px, py2 - py);
+        if (d < tol && (!best || d < best.d)) best = { si, pi, d };
+      }
+    });
+    if (!best) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    plotDiv.style.cursor = 'ns-resize';
+    function onMove(ev) {
+      const myPy = ev.clientY - plotTop;
+      // p2d on a log axis returns the raw data value (Plotly handles the transform internally)
+      let newY = ya.p2d(myPy);
+      if (!Number.isFinite(newY)) return;
+      if (ev.shiftKey) newY = Math.round(newY * 100) / 100;
+      // Modify guide (shadow) values only — original data is preserved
+      dataset.series[best.si].guideValues[best.pi] = newY;
+      renderPlot();
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      plotDiv.style.cursor = '';
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, true);
+
+  // Cursor hint when hovering a marker in edit mode
+  plotDiv.addEventListener('mousemove', (e) => {
+    if (!dataset || !document.getElementById('edit-points').checked) return;
+    if (e.buttons) return; // already dragging
+    const layout = gd._fullLayout;
+    if (!layout || !layout.xaxis || !layout.xaxis.d2p) return;
+    const xa = layout.xaxis, ya = layout.yaxis;
+    const pa = layout._size;
+    const rect = plotDiv.getBoundingClientRect();
+    const px = e.clientX - rect.left - pa.l, py = e.clientY - rect.top - pa.t;
+    let near = false;
+    outer: for (let si = 0; si < dataset.series.length; si++) {
+      if (!seriesStyles[si].visible) continue;
+      const s = dataset.series[si];
+      const guideY = s.guideValues || s.values;
+      for (let pi = 0; pi < dataset.xValues.length; pi++) {
+        const xv = dataset.xValues[pi], yv = guideY[pi];
+        if (yv == null || !Number.isFinite(yv)) continue;
+        if (xa.type === 'log' && xv <= 0) continue;
+        const d = Math.hypot(xa.d2p(xv) - px, ya.d2p(yv) - py);
+        if (d < 18) { near = true; break outer; }
+      }
+    }
+    plotDiv.style.cursor = near ? 'ns-resize' : '';
+  });
+}
+
+// ============================================================================
+// SECTION 9: Export (PNG / SVG download)
+//   - sanitizeForFilename: strip LaTeX/HTML and non-filesystem-safe chars
+//   - makeFilename: plot title if set, otherwise "<Y>_vs_<X>"
+//   - downloadAs: calls Plotly.toImage with the export-mode figure (no shadows)
+// ============================================================================
+
+// Convert a possibly LaTeX/HTML-rich title to a filesystem-safe ASCII slug.
+function sanitizeForFilename(text) {
+  if (text == null) return '';
+  let s = String(text)
+    .replace(/\$/g, '')                       // strip $ delimiters
+    .replace(/<[^>]+>/g, '')                   // strip HTML tags
+    .replace(/&[a-zA-Z]+;/g, '')               // strip HTML entities like &sigma;
+    .replace(/\\([a-zA-Z]+)/g, '$1')           // \sqrt → sqrt
+    .replace(/[{}()\[\]]/g, '')                // strip brackets
+    .replace(/\s+/g, '_')                      // whitespace → _
+    .replace(/[^A-Za-z0-9_+\-=.]/g, '')        // keep alphanumeric + safe chars
+    .replace(/_{2,}/g, '_')                    // collapse underscores
+    .replace(/^_+|_+$/g, '');                  // trim
+  if (s.length > 40) s = s.slice(0, 40);
+  return s;
+}
+
+function makeFilename() {
+  const plotTitle = document.getElementById('plot-title').value;
+  if (plotTitle && plotTitle.trim()) {
+    const t = sanitizeForFilename(plotTitle);
+    if (t) return t;
+  }
+  const xRaw = document.getElementById('x-title').value || (dataset ? dataset.xName : '') || 'x';
+  const yRaw = document.getElementById('y-title').value || 'y';
+  const x = sanitizeForFilename(xRaw) || 'x';
+  const y = sanitizeForFilename(yRaw) || 'y';
+  const name = y + '_vs_' + x;
+  return name || 'plot';
+}
+
+function downloadAs(format) {
+  if (!dataset) { alert('Paste data first.'); return; }
+  const w = +document.getElementById('plot-w').value || 700;
+  const h = +document.getElementById('plot-h').value || 500;
+  // Build figure WITHOUT shadow control points (forExport: true), render off-screen
+  const { traces, layout } = buildFigure({ forExport: true });
+  const fname = makeFilename();
+  Plotly.toImage({ data: traces, layout }, { format, width: w, height: h }).then(uri => {
+    // SVG export goes through Plotly's internal renderer and doesn't see the
+    // fitLegendBox surgery we did on the live DOM. Re-apply it on the exported SVG.
+    if (format === 'svg') {
+      try { uri = applyLegendFixToSvgUri(uri); }
+      catch (e) { console.warn('Legend fix to exported SVG failed:', e); }
+    }
+    const a = document.createElement('a');
+    a.href = uri;
+    a.download = fname + '.' + format;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+}
+
+// Parse a Plotly-exported SVG data URI, attach it to a hidden DOM container
+// so getBBox() works for measurement, normalize the legend's math SVG widths
+// to absolute pixels, run fitLegendBox to widen the legend rect + clipPath,
+// then serialize back.
+//
+// Implementation notes that matter:
+//   - innerHTML (HTML parser path) instead of DOMParser + importNode — the HTML
+//     parser handles inline-SVG namespace promotion more reliably.
+//   - The hidden container has explicit width / height so the SVG lays out;
+//     otherwise some browsers compute zero-size bboxes.
+//   - Plotly's MathJax-rendered legend math declares `width="Xex"` whose pixel
+//     value depends on the inherited CSS font-size. Different viewers default
+//     to different sizes, and the math content is often narrower than the
+//     declared box (preserveAspectRatio="meet" leaves trailing empty space).
+//     We convert each math SVG's width to a fixed pixel value derived from its
+//     own height × viewBox aspect — eliminating both ex ambiguity AND the
+//     trailing empty space inside the math box.
+//   - A read of offsetHeight forces synchronous layout before getBBox.
+function applyLegendFixToSvgUri(dataUri) {
+  const prefix = 'data:image/svg+xml,';
+  if (!dataUri.startsWith(prefix)) return dataUri;
+  const svgStr = decodeURIComponent(dataUri.slice(prefix.length));
+
+  const hidden = document.createElement('div');
+  hidden.style.cssText = 'position:absolute; left:-99999px; top:-99999px; ' +
+                         'width:2000px; height:2000px; pointer-events:none; opacity:0;';
+  hidden.innerHTML = svgStr;
+  document.body.appendChild(hidden);
+
+  const svgInHidden = hidden.querySelector('svg');
+  if (!svgInHidden) {
+    document.body.removeChild(hidden);
+    return dataUri;
+  }
+
+  // Normalize each legend math SVG's width: replace `Xex` with the actual rendered
+  // content width in pixels, computed from height × (viewBox.width / viewBox.height).
+  // This is the width the math content actually occupies under preserveAspectRatio="meet".
+  svgInHidden.querySelectorAll('svg.legendtext-math').forEach(m => {
+    const h = parseFloat(m.getAttribute('height'));
+    const vb = (m.getAttribute('viewBox') || '').split(/\s+/);
+    if (vb.length !== 4 || !isFinite(h) || h <= 0) return;
+    const vbW = parseFloat(vb[2]), vbH = parseFloat(vb[3]);
+    if (!isFinite(vbW) || !isFinite(vbH) || vbW <= 0 || vbH <= 0) return;
+    const idealW = Math.ceil(h * vbW / vbH);
+    m.setAttribute('width', idealW + 'px');
+  });
+
+  // Force synchronous layout so any subsequent getBBox() call returns real values.
+  void hidden.offsetHeight;
+
+  try { fitLegendBox(hidden); }
+  catch (_) { /* swallow — fall back to unmodified SVG */ }
+
+  const fixed = new XMLSerializer().serializeToString(svgInHidden);
+  document.body.removeChild(hidden);
+  return prefix + encodeURIComponent(fixed);
+}
+
+// ============================================================================
+// SECTION 9b: Persistence — manual save/load to JSON file + auto-save to localStorage
+//
+//   serializeProject()   — gather { dataset, seriesStyles, inputs, ... } into a
+//                          plain object suitable for JSON.stringify.
+//   deserializeProject() — restore state from such an object; triggers full re-render.
+//   saveProjectToFile()  — download as .json (filename via makeFilename).
+//   loadProjectFromFile()— read user-picked file and restore.
+//   scheduleAutoSave()   — debounced (800 ms) write to localStorage.
+//   loadAutoSave()       — try to restore from localStorage on page load.
+// ============================================================================
+
+const AUTOSAVE_KEY = 'plotCreator.autoSave.v1';
+const PROJECT_VERSION = 1;
+const PERSISTED_INPUT_IDS = [
+  'x-title', 'y-title', 'plot-title', 'x-scale', 'y-scale', 'x-tick-style', 'y-tick-style',
+  'x-label-step', 'y-label-step',
+  'x-min', 'x-max', 'y-min', 'y-max', 'frame-style', 'legend-pos',
+  'plot-w', 'plot-h', 'show-grid', 'show-legend',
+  'text-size', 'font-family', 'right-margin', 'legend-text-size',
+  'x-title-size', 'y-title-size'
+];
+
+function serializeProject() {
+  if (!dataset) return null;
+  const inputs = {};
+  PERSISTED_INPUT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) inputs[id] = el.value;
+  });
+  return {
+    version: PROJECT_VERSION,
+    dataset, seriesStyles, inputs,
+    legendOverride, userRightMargin,
+    editPoints: !!document.getElementById('edit-points').checked
+  };
+}
+
+function deserializeProject(obj) {
+  if (!obj || !obj.dataset || !Array.isArray(obj.dataset.series)) return false;
+  dataset = obj.dataset;
+  seriesStyles = Array.isArray(obj.seriesStyles) ? obj.seriesStyles : [];
+  initSeriesStyles(dataset.series.length);   // pads with defaults if seriesStyles is short
+
+  // Backward compatibility: older project files had GLOBAL marker-size / line-width
+  // in inputs and no per-series fields. Promote those globals to each series that
+  // doesn't already have its own value. (Once saved again, the values live on the
+  // series and these legacy fields are ignored.)
+  if (obj.inputs) {
+    const legacyMs = +obj.inputs['marker-size'];
+    const legacyLw = +obj.inputs['line-width'];
+    if (Number.isFinite(legacyMs)) {
+      seriesStyles.forEach(st => { if (st.markerSize == null) st.markerSize = legacyMs; });
+    }
+    if (Number.isFinite(legacyLw)) {
+      seriesStyles.forEach(st => { if (st.lineWidth == null) st.lineWidth = legacyLw; });
+    }
+    Object.entries(obj.inputs).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el && val !== undefined && val !== null) el.value = val;
+    });
+  }
+  legendOverride = obj.legendOverride || null;
+  userRightMargin = (obj.userRightMargin == null) ? null : obj.userRightMargin;
+  const editToggle = document.getElementById('edit-points');
+  if (editToggle && obj.editPoints !== undefined) editToggle.checked = !!obj.editPoints;
+  renderDataTable();
+  renderSeriesControls();
+  syncTextarea();
+  renderPlot();
+  return true;
+}
+
+function saveProjectToFile() {
+  const proj = serializeProject();
+  if (!proj) { alert('No data to save yet — paste or load some first.'); return; }
+  const blob = new Blob([JSON.stringify(proj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = makeFilename() + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function loadProjectFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const obj = JSON.parse(e.target.result);
+      if (!deserializeProject(obj)) alert('That file doesn\'t look like a Plot Creator project.');
+    } catch (err) {
+      alert('Could not parse project file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+let autoSaveTimer = null;
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null;
+    const proj = serializeProject();
+    try {
+      if (proj) localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(proj));
+      else localStorage.removeItem(AUTOSAVE_KEY);
+    } catch (_) { /* quota / private mode — silently give up */ }
+  }, 800);
+}
+
+function loadAutoSave() {
+  try {
+    const json = localStorage.getItem(AUTOSAVE_KEY);
+    if (!json) return false;
+    return deserializeProject(JSON.parse(json));
+  } catch (_) { return false; }
+}
+
+// ============================================================================
+// SECTION 10: Bootstrapping — event wiring and initial render
+// ============================================================================
+
+// Sample data matching the reference image the user provided
+const SAMPLE = `x\tg_P=1\tg_P=4\tg_P=8\tg_P=12\tg_P=16
+1e-8\t0.552\t0.301\t0.213\t0.175\t0.140
+1e-7\t0.547\t0.302\t0.214\t0.176\t0.142
+1e-6\t0.540\t0.300\t0.213\t0.174\t0.143
+1e-5\t0.412\t0.272\t0.208\t0.171\t0.140
+1e-4\t0.240\t0.196\t0.180\t0.158\t0.140
+1e-3\t0.083\t0.080\t0.082\t0.079\t0.082
+1e-2\t0.030\t0.028\t0.030\t0.030\t0.028
+1e-1\t0.010\t0.010\t0.010\t0.010\t0.010
+1\t0.003\t0.003\t0.003\t0.003\t0.003`;
+
+document.getElementById('parse-btn').addEventListener('click', () => {
+  const text = document.getElementById('data-input').value;
+  const msg = document.getElementById('parse-msg');
+  msg.className = 'help';
+  try {
+    dataset = parseClipboard(text);
+    initSeriesStyles(dataset.series.length);
+    document.getElementById('x-title').value = document.getElementById('x-title').value || dataset.xName;
+    renderDataTable();
+    renderSeriesControls();
+    renderPlot();
+    msg.textContent = `Parsed ${dataset.xValues.length} rows × ${dataset.series.length} series.`;
+  } catch (e) {
+    msg.className = 'error';
+    msg.textContent = e.message;
+  }
+});
+
+document.getElementById('sample-btn').addEventListener('click', () => {
+  document.getElementById('data-input').value = SAMPLE;
+  document.getElementById('parse-btn').click();
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  document.getElementById('data-input').value = '';
+  document.getElementById('parse-msg').textContent = '';
+  dataset = null;
+  seriesStyles = [];
+  legendOverride = null;
+  userRightMargin = null;
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch (_) {}
+  renderDataTable();
+  renderSeriesControls();
+  Plotly.purge('plot');
+});
+
+document.getElementById('save-btn').addEventListener('click', saveProjectToFile);
+document.getElementById('load-btn').addEventListener('click', () => {
+  document.getElementById('load-input').click();
+});
+document.getElementById('load-input').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (file) loadProjectFromFile(file);
+  e.target.value = '';   // reset so picking the same file again still fires 'change'
+});
+
+// Live-update inputs: every keystroke re-renders the plot (cheap because
+// Plotly.react diffs against the previous figure and only updates what changed).
+['x-title', 'y-title', 'plot-title', 'x-scale', 'y-scale', 'x-tick-style', 'y-tick-style',
+ 'x-label-step', 'y-label-step',
+ 'x-min', 'x-max', 'y-min', 'y-max',
+ 'frame-style', 'legend-pos',
+ 'plot-w', 'plot-h', 'show-grid', 'show-legend',
+ 'text-size', 'font-family', 'right-margin', 'legend-text-size',
+ 'x-title-size', 'y-title-size']
+  .forEach(id => document.getElementById(id).addEventListener('input', () => {
+    // Changing the legend preset clears any prior drag override AND the margin override
+    if (id === 'legend-pos') {
+      legendOverride = null;
+      userRightMargin = null;
+      document.getElementById('right-margin').value = '';
+    }
+    if (id === 'right-margin') {
+      const v = document.getElementById('right-margin').value.trim();
+      userRightMargin = (v === '' || !Number.isFinite(+v)) ? null : Math.max(20, +v);
+    }
+    // Plotly.react sometimes misses nested-property changes (notably legend.font.size,
+    // xaxis.title.font.size) and leaves layout dimensions stale. Force a relayout
+    // BEFORE the .react so things re-size live as the user types.
+    if (['text-size', 'font-family', 'legend-text-size',
+         'x-title-size', 'y-title-size'].includes(id)) {
+      const plot = document.getElementById('plot');
+      if (plot && plot.children.length) {
+        const ts = Math.max(6, Math.min(72, +document.getElementById('text-size').value || 14));
+        const ff = document.getElementById('font-family').value || 'Arial, sans-serif';
+        const readSz = (k) => {
+          const r = document.getElementById(k).value.trim();
+          return (r !== '' && Number.isFinite(+r)) ? Math.max(6, Math.min(72, +r)) : ts;
+        };
+        Plotly.relayout(plot, {
+          'font.size': ts, 'font.family': ff,
+          'legend.font.size': readSz('legend-text-size'), 'legend.font.family': ff,
+          'xaxis.title.font.size': readSz('x-title-size'), 'xaxis.title.font.family': ff,
+          'yaxis.title.font.size': readSz('y-title-size'), 'yaxis.title.font.family': ff
+        });
+      }
+    }
+    renderPlot();
+  }));
+
+// Hard-refresh on commit (blur/Enter) for inputs where Plotly.react's diff is
+// unreliable — notably nested-property changes like legend.font.size and the
+// axis title font sizes. Plotly.purge + a fresh Plotly.react guarantees the update.
+['text-size', 'font-family', 'legend-text-size',
+ 'x-title-size', 'y-title-size'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    if (!dataset) return;
+    Plotly.purge('plot');
+    renderPlot();
+  });
+});
+
+document.getElementById('export-png').addEventListener('click', () => downloadAs('png'));
+document.getElementById('export-svg').addEventListener('click', () => downloadAs('svg'));
+
+document.getElementById('edit-points').addEventListener('change', renderPlot);
+
+document.getElementById('reset-guides').addEventListener('click', () => {
+  if (!dataset) return;
+  dataset.series.forEach(s => { s.guideValues = [...s.values]; });
+  renderPlot();
+});
+
+// Auto-parse on paste so it Just Works
+document.getElementById('data-input').addEventListener('paste', () => {
+  setTimeout(() => document.getElementById('parse-btn').click(), 30);
+});
+
+// Init UI on load
+initColorPopover();
+// Try to restore from the last auto-save. If nothing's there, show the empty table.
+if (!loadAutoSave()) renderDataTable();
+
+// Keep the on-screen plot proportions in sync with Plot style options when the
+// window/panel changes size. Plotly's `responsive: true` handles a 1:1 fill,
+// but we want a specific W×H aspect ratio.
+window.addEventListener('resize', () => {
+  if (document.getElementById('plot').children.length) {
+    applyPlotAspect();
+    Plotly.Plots.resize('plot');
+  }
+});
+
+// Draggable separator between the control panel and the plot.
+// Updates `grid-template-columns` live and calls Plotly.Plots.resize so the
+// chart reflows as the user drags.
+(function () {
+  const splitter = document.getElementById('splitter');
+  if (!splitter) return;
+  splitter.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    splitter.classList.add('dragging');
+    document.body.classList.add('col-resizing');
+    const app = document.querySelector('.app');
+    const panel = document.querySelector('.panel');
+    const startX = e.clientX;
+    const startWidth = panel.getBoundingClientRect().width;
+    function onMove(ev) {
+      const dx = ev.clientX - startX;
+      const newWidth = Math.max(280, Math.min(window.innerWidth - 320, startWidth + dx));
+      app.style.gridTemplateColumns = newWidth + 'px 10px 1fr';
+      if (window.Plotly && document.getElementById('plot').children.length) {
+        applyPlotAspect();
+        Plotly.Plots.resize('plot');
+      }
+    }
+    function onUp() {
+      splitter.classList.remove('dragging');
+      document.body.classList.remove('col-resizing');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+})();
+</script>
+</body>
+</html>
